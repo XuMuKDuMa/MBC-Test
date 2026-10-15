@@ -5973,6 +5973,34 @@ body.dark .route-unresolved {
   background: rgba(28, 28, 30, .85); color: #ff8a80; border-color: rgba(255, 99, 88, .55);
 }
 </style>
+<style id="meet-accordion-style">
+/* ─── Аккордеон «Встречи»: крупный, двухцветный (B2C синий ↔ B2B фиолетовый), со свечением ─── */
+.meet-accordion { margin: 14px 8px; background: transparent !important; box-shadow: none !important; border: none !important; padding: 0 !important; }
+.meet-accordion > .section-title.sec-meet {
+  padding: 18px 20px !important; border-radius: 14px !important;
+  font-size: 17px !important; font-weight: 800 !important; letter-spacing: .4px;
+  color: #fff !important; text-shadow: 0 1px 3px rgba(0,0,0,.3);
+  background: linear-gradient(90deg, #3498db 0%, #6c5ce7 45%, #8e44ad 55%, #3498db 100%) !important;
+  background-size: 200% 100% !important;
+  animation: meetShift 5s ease-in-out infinite, meetGlow 3s ease-in-out infinite;
+  -webkit-tap-highlight-color: transparent; transition: transform .15s;
+}
+.meet-accordion > .section-title.sec-meet:active { transform: scale(.98); }
+.meet-accordion .section-arrow { font-size: 15px !important; opacity: 1 !important; }
+@keyframes meetShift { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+@keyframes meetGlow {
+  0%,100% { box-shadow: -4px 3px 18px rgba(52,152,219,.55),  4px 3px 18px rgba(142,68,173,.35); }
+  50%     { box-shadow: -4px 3px 18px rgba(52,152,219,.35),  4px 3px 22px rgba(142,68,173,.6); }
+}
+body.dark .meet-accordion > .section-title.sec-meet {
+  animation: meetShift 5s ease-in-out infinite, meetGlowDark 3s ease-in-out infinite;
+}
+@keyframes meetGlowDark {
+  0%,100% { box-shadow: -4px 3px 22px rgba(52,152,219,.5),  4px 3px 22px rgba(142,68,173,.3), 0 0 30px rgba(108,92,231,.18); }
+  50%     { box-shadow: -4px 3px 22px rgba(52,152,219,.3),  4px 3px 26px rgba(142,68,173,.55), 0 0 36px rgba(108,92,231,.28); }
+}
+.meet-accordion > .section-body { margin-top: 10px; }
+</style>
 <style id="route-type-select">
 /* ─── Тип встречи: компактная строка-выбор, без рамки ─── */
 .route-type-btn {
@@ -6721,7 +6749,24 @@ function goToTab(n, animate = true) {
       }
     });
     
-    // (продукты теперь видны всегда — прятать их при уходе с «Сегодня» больше не нужно)
+    // ─── Свернуть все продукты и аккордеон «Встречи» при уходе с «Сегодня» ───
+    document.querySelectorAll('#app1 .section[data-section-title]').forEach(sc => {
+      const t = sc.dataset.sectionTitle;
+      if (t === 'Встречи' || t === 'Бизнес') return;
+      const b = sc.querySelector(':scope > .section-body');
+      if (b) b.style.display = 'none';
+      const a = sc.querySelector(':scope > .section-title .section-arrow');
+      if (a) a.style.transform = 'rotate(0deg)';
+    });
+    const meetAcc = document.querySelector('#app1 .meet-accordion');
+    if (meetAcc) {
+      window._meetAccordionOpen = false;
+      const mb = meetAcc.querySelector(':scope > .section-body');
+      if (mb) mb.style.display = 'none';
+      const ma = meetAcc.querySelector(':scope > .section-title .section-arrow');
+      if (ma) ma.style.transform = 'rotate(0deg)';
+      meetAcc.classList.remove('is-open');
+    }
   }
 
 
@@ -8611,8 +8656,8 @@ function render1() {
         // Секция «Встречи» — особая, рендерится отдельно (аккордеон после «Доп. продукты»)
     const alwaysOpen = (section.title === 'Встречи');
 
-    // Обычные продуктовые секции теперь видны сразу
-    const isOpen = true;
+    // Продуктовые секции свёрнуты; раскрываются по тапу на название
+    const isOpen = alwaysOpen;
     const sec = document.createElement('div');
     sec.className = 'section';
     sec.dataset.sectionTitle = section.title;
@@ -8899,7 +8944,7 @@ if (bizSection) {
 
   // ─── Аккордеон «Встречи» (B2C / B2B счётчики по типам) — свёрнут по умолчанию ───
   const meetAccSec = document.createElement('div');
-  meetAccSec.className = 'section meet-accordion';
+  meetAccSec.className = 'section meet-accordion' + (window._meetAccordionOpen ? ' is-open' : '');
 
   const meetAccTitle = document.createElement('div');
   meetAccTitle.className = 'section-title sec-meet';
@@ -8932,6 +8977,7 @@ if (bizSection) {
     const next = !open;
     meetAccBody.style.display = next ? 'block' : 'none';
     window._meetAccordionOpen = next;
+    meetAccSec.classList.toggle('is-open', next);
     const arrowEl = meetAccTitle.querySelector('.section-arrow');
     if (arrowEl) arrowEl.style.transform = next ? 'rotate(180deg)' : 'rotate(0deg)';
     vibro(8);
