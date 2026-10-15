@@ -5963,27 +5963,23 @@ body.dark .route-unresolved {
   background: rgba(28, 28, 30, .85); color: #ff8a80; border-color: rgba(255, 99, 88, .55);
 }
 </style>
-<style id="route-type-chips">
-/* ─── Тип встречи на карточке ─── */
-.route-type-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; width: 100%; }
-.rtype-chip {
-  display: inline-flex; align-items: baseline; gap: 5px;
-  padding: 6px 10px; line-height: 1.2;
+<style id="route-type-select">
+/* ─── Тип встречи: выпадающий выбор ─── */
+.route-type-btn {
+  --tc: #2e86c1;
+  display: inline-flex; align-items: center; gap: 8px; max-width: 100%;
+  margin-top: 8px; padding: 7px 10px 7px 12px;
   border: 1.5px solid rgba(0, 0, 0, .14); border-radius: 10px;
-  background: #fff; color: #2c3e50;
-  font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  transition: background .15s, color .15s, border-color .15s, transform .12s, box-shadow .15s;
+  background: #fff; color: #2c3e50; box-shadow: inset 3px 0 0 var(--tc);
+  font-family: inherit; font-size: 13px; font-weight: 700; line-height: 1.2; text-align: left;
+  cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform .12s;
 }
-.rtype-chip .rtype-up { font-size: 10px; font-weight: 800; opacity: .6; }
-.rtype-chip:active { transform: scale(.95); }
-.rtype-chip.active { color: #fff; border-color: transparent; box-shadow: 0 0 0 2px rgba(255, 255, 255, .9), 0 2px 8px rgba(0, 0, 0, .25); }
-.rtype-chip.active .rtype-up { opacity: .95; }
-.rtype-chip.active > span:first-child::before { content: '✓ '; }
-.route-type-row.cat-b2c .rtype-chip.active { background: linear-gradient(135deg, #2e86c1, #1f618d); }
-.route-type-row.cat-b2b .rtype-chip.active { background: linear-gradient(135deg, #8e44ad, #6c3483); }
-body.dark .rtype-chip { background: #2c3a48; color: #e8eef5; border-color: #3a4a5a; }
-body.dark .rtype-chip.active { color: #fff; border-color: transparent; }
+.route-type-btn.cat-b2b { --tc: #8e44ad; }
+.route-type-btn .rtb-up { font-size: 11px; font-weight: 800; color: var(--tc); }
+.route-type-btn .rtb-arrow { font-size: 12px; opacity: .6; margin-left: 2px; }
+.route-type-btn:active { transform: scale(.96); }
+body.dark .route-type-btn { background: #2c3a48; color: #e8eef5; border-color: #3a4a5a; }
+#statusMenu .sm-up { margin-left: 14px; font-size: 11px; font-weight: 800; opacity: .55; }
 </style>
 </head>
 <body class="tab-4">
@@ -7306,7 +7302,7 @@ let _openSlotId = null;
 let _statusMenuOpen = null;
 let _statusMenuHideTimer = null;
 
-function openStatusMenu(anchor, item, timeId) {
+function openStatusMenu(anchor, item, timeId, mode) {
   const menu = document.getElementById('statusMenu');
   const overlay = document.getElementById('statusOverlay');
   if (!menu || !overlay) return;
@@ -7316,10 +7312,17 @@ function openStatusMenu(anchor, item, timeId) {
     // 1. Заполняем кнопки — зависит от того, в процессе ли встреча
   const isLive = !!item.startedAt;
 
-  if (isLive) {
-    // ─── Встреча в процессе: только «Завершить» и «Удалить» ───
+  if (mode === 'type') {
+    // ─── Выбор типа встречи ───
+    const cur = effectiveMtype(item);
+    menu.innerHTML = (getMeetingTypes()[item.category || 'b2c'] || []).map(t => {
+      const up = meetingTypeUp(t.id);
+      return `<button data-mtype="${t.id}"><span class="sm-icon">${t.id === cur ? '✓' : '○'}</span>${t.label}` +
+             (up ? `<span class="sm-up">+${up.toFixed(2)}</span>` : '') + `</button>`;
+    }).join('');
+  } else if (isLive) {
+    // ─── Встреча в процессе: только «Удалить» (завершать — кнопкой «Завершить» на карточке) ───
     menu.innerHTML = `
-      <button data-status="done"><span class="sm-icon">✓</span>Завершить</button>
       <button class="sm-del" data-action="delete">Удалить</button>
     `;
   } else {
@@ -7383,7 +7386,13 @@ function openStatusMenu(anchor, item, timeId) {
       const status = btn.dataset.status;
       const action = btn.dataset.action;
 
-      if (action === 'delete') {
+      if (btn.dataset.mtype) {
+        item.mtype = btn.dataset.mtype;
+        syncCardCredit(item);
+        saveRouteState(routeState);
+        renderRoute();
+        vibro(10);
+      } else if (action === 'delete') {
         const list = routeState.lists[timeId] || [];
         const idx = list.indexOf(item);
         if (idx >= 0) {
@@ -7858,28 +7867,27 @@ catSwitch.appendChild(btnB2B);
 
 card.appendChild(catSwitch);
 
-// ─── Тип встречи (набор зависит от B2C / B2B) ───
+// ─── Тип встречи: по умолчанию первый, по тапу — выпадающий список ───
 if (item.status !== 'perenos' && item.status !== 'ndz') {
-  const typeRow = document.createElement('div');
-  typeRow.className = 'route-type-row cat-' + currentCat;
-  (getMeetingTypes()[currentCat] || []).forEach(t => {
-    const up = meetingTypeUp(t.id);
-    const chip = document.createElement('button');
-    chip.type = 'button';
-    chip.className = 'rtype-chip' + (item.mtype === t.id ? ' active' : '');
-    chip.innerHTML = `<span>${t.label}</span>` + (up ? `<span class="rtype-up">+${up.toFixed(2)}</span>` : '');
-    chip.addEventListener('click', (e) => {
+  const curId = effectiveMtype(item);
+  const curT = (getMeetingTypes()[currentCat] || []).find(t => t.id === curId);
+  if (curT) {
+    const curUp = meetingTypeUp(curT.id);
+    const typeBtn = document.createElement('button');
+    typeBtn.type = 'button';
+    typeBtn.className = 'route-type-btn cat-' + currentCat;
+    typeBtn.title = 'Тип встречи — от него зависит УП';
+    typeBtn.innerHTML = `<span class="rtb-label">${curT.label}</span>` +
+      (curUp ? `<span class="rtb-up">+${curUp.toFixed(2)}</span>` : '') +
+      `<span class="rtb-arrow">▾</span>`;
+    typeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      item.mtype = (item.mtype === t.id) ? null : t.id;   // повторный тап — снять выбор
-      syncCardCredit(item);
-      saveRouteState(routeState);
       vibro(10);
-      renderRoute();
+      openStatusMenu(typeBtn, item, timeId, 'type');
     });
-    chip.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
-    typeRow.appendChild(chip);
-  });
-  card.appendChild(typeRow);
+    typeBtn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+    card.appendChild(typeBtn);
+  }
 }
 // ─── Строка со статусом и кнопкой «Начать» / индикатором ───
 const statusLine = document.createElement('div');
@@ -7899,9 +7907,8 @@ if (item.startedAt) {
   live.className = 'route-live' + (over3h ? ' over-3h' : '');
   live.innerHTML = `
     <span class="rl-dot"></span>
-    <span class="rl-elapsed" data-started="${item.startedAt}">${fmtElapsed(elapsed)}</span>
+    <span>В работе</span>
   `;
-  live.title = 'Встреча в работе';
   statusLine.appendChild(live);
 
   // ─── Быстрая кнопка «Завершить» ───
@@ -8107,10 +8114,16 @@ function creditMeetingType(mid, delta) {
   }
   setCount1(mid, getCount1(mid) + delta);
 }
+// Тип по умолчанию: первый в категории (B2C → ФД обычная, B2B → РКО)
+function effectiveMtype(item) {
+  const list = getMeetingTypes()[item.category || 'b2c'] || [];
+  if (item.mtype && list.some(t => t.id === item.mtype)) return item.mtype;
+  return list.length ? list[0].id : null;
+}
 // Приводит запись УП в соответствие с карточкой: «Готово» + выбран тип → записано, иначе → снято
 function syncCardCredit(item) {
   if (!item) return;
-  const desired = (item.status === 'done' && item.mtype) ? item.mtype : null;
+  const desired = (item.status === 'done') ? effectiveMtype(item) : null;
   if (item.credited && item.credited !== desired) {
     creditMeetingType(item.credited, -1);
     item.credited = null;
@@ -8128,39 +8141,14 @@ function uncreditCard(item) {
     item.credited = null;
   }
 }
-// Если закрыли встречу без типа — мягкая подсказка
-function noTypeHint(item) {
-  if (item && !item.mtype) {
-    setTimeout(() => showToast('ℹ️ Тип встречи не выбран — УП не записан'), 1500);
-  }
-}
+// (подсказка «тип не выбран» не нужна: тип всегда есть — по умолчанию первый)
+function noTypeHint() {}
 // Тип не из текущей категории (сменили B2C ↔ B2B) — сбросить
 function resetMtypeForCategory(item) {
   const list = getMeetingTypes()[item.category || 'b2c'] || [];
-  if (item.mtype && !list.some(t => t.id === item.mtype)) {
-    item.mtype = null;
-    syncCardCredit(item);
-  }
+  if (item.mtype && !list.some(t => t.id === item.mtype)) item.mtype = null;
+  syncCardCredit(item);   // у «Готово» УП перейдёт на тип по умолчанию новой категории
 }
-
-// ─── Время встречи в работе: «12 мин» / «1 ч 05 мин» ───
-function fmtElapsed(ms) {
-  const m = Math.max(0, Math.floor(ms / 60000));
-  if (m < 60) return m + ' мин';
-  return Math.floor(m / 60) + ' ч ' + String(m % 60).padStart(2, '0') + ' мин';
-}
-function tickElapsed() {
-  document.querySelectorAll('#app4 .rl-elapsed').forEach(el => {
-    const st = Number(el.dataset.started);
-    if (!st) return;
-    const ms = Date.now() - st;
-    el.textContent = fmtElapsed(ms);
-    const pill = el.closest('.route-live');
-    if (pill) pill.classList.toggle('over-3h', ms > 3 * 60 * 60 * 1000);
-  });
-}
-setInterval(tickElapsed, 20000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) tickElapsed(); });
 
 // ─── Завершить встречу одной кнопкой (то же, что «Завершить» в меню статуса) ───
 function quickFinishMeeting(item) {
