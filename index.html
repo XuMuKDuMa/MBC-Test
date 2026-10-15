@@ -5935,6 +5935,34 @@ body.dark .r1-totals.tr-bad {
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 </style>
+<style id="route-card-upgrades">
+/* ─── Кнопка «Завершить» ─── */
+.route-finish-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 8px 12px; border: none; border-radius: 10px;
+  background: linear-gradient(135deg, #2ecc71, #27ae60); color: #fff;
+  font-family: inherit; font-size: 12px; font-weight: 800; letter-spacing: .2px;
+  white-space: nowrap; flex-shrink: 0; cursor: pointer;
+  box-shadow: 0 2px 8px rgba(39, 174, 96, .35);
+  -webkit-tap-highlight-color: transparent; transition: transform .12s;
+}
+.route-finish-btn:active { transform: scale(.94); }
+.route-live .rl-elapsed { font-variant-numeric: tabular-nums; }
+
+/* ─── Плашка «Нет на карте» ─── */
+.route-unresolved {
+  display: flex; align-items: center; gap: 6px;
+  width: 100%; box-sizing: border-box; margin-top: 6px; padding: 6px 10px;
+  border: 1px solid rgba(231, 76, 60, .6); border-radius: 10px;
+  background: rgba(255, 255, 255, .92); color: #c0392b;
+  font-family: inherit; font-size: 12px; font-weight: 700; text-align: left;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.route-unresolved:active { transform: scale(.98); }
+body.dark .route-unresolved {
+  background: rgba(28, 28, 30, .85); color: #ff8a80; border-color: rgba(255, 99, 88, .55);
+}
+</style>
 </head>
 <body class="tab-4">
 
@@ -7633,6 +7661,21 @@ btnCoords.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: 
 addrWrap.appendChild(btnCoords);
 fields.appendChild(addrWrap);
 
+// ─── Предупреждение: адрес не найден на карте ───
+if (item.status !== 'done' && item.status !== 'perenos' && isAddrUnresolved(item.addr)) {
+  const warn = document.createElement('button');
+  warn.type = 'button';
+  warn.className = 'route-unresolved';
+  warn.innerHTML = '<span>⚠</span><span>Нет на карте · указать координаты</span>';
+  warn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    vibro(15);
+    openCoordsModal(item, timeId);
+  });
+  warn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+  fields.appendChild(warn);
+}
+
 // ─── Поле заметки + кнопка микрофона ───
 const noteWrap = document.createElement('div');
 noteWrap.className = 'route-note-wrap';
@@ -7792,13 +7835,7 @@ card.appendChild(catSwitch);
 const statusLine = document.createElement('div');
 statusLine.className = 'route-status-line';
 
-// ─── Если встреча в работе — подсказка ПЕРЕД статусом ───
-if (item.startedAt) {
-  const hint = document.createElement('div');
-  hint.className = 'status-hint';
-  hint.innerHTML = `<span>выбери статус</span><span class="sh-arrow">➜</span>`;
-  statusLine.appendChild(hint);
-}
+// (подсказка «выбери статус» заменена кнопкой «Завершить»)
 
 // Бейдж статуса — идёт после подсказки
 statusLine.appendChild(statusBadge);
@@ -7812,9 +7849,22 @@ if (item.startedAt) {
   live.className = 'route-live' + (over3h ? ' over-3h' : '');
   live.innerHTML = `
     <span class="rl-dot"></span>
-    <span>В работе</span>
+    <span class="rl-elapsed" data-started="${item.startedAt}">${fmtElapsed(elapsed)}</span>
   `;
+  live.title = 'Встреча в работе';
   statusLine.appendChild(live);
+
+  // ─── Быстрая кнопка «Завершить» ───
+  const finishBtn = document.createElement('button');
+  finishBtn.type = 'button';
+  finishBtn.className = 'route-finish-btn';
+  finishBtn.innerHTML = '<span>✓</span><span>Завершить</span>';
+  finishBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    quickFinishMeeting(item);
+  });
+  finishBtn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+  statusLine.appendChild(finishBtn);
 }
 // ─── Бейдж «Сбер Завершено» для done ───
 else if (item.status === 'done') {
@@ -7877,6 +7927,7 @@ else if (item.status === 'perenos') {
       stroke="currentColor" stroke-width="8" stroke-linecap="round"/>
 <line x1="74" y1="46" x2="46" y2="74" 
       stroke="currentColor" stroke-width="8" stroke-linecap="round"/>
+    </svg>
   `;
   statusLine.appendChild(stamp);
 }
@@ -7960,6 +8011,53 @@ card.appendChild(statusLine);
   addrInput.addEventListener('blur', () => autoGrow(addrInput));
 
   return card;
+}
+
+// ─── Время встречи в работе: «12 мин» / «1 ч 05 мин» ───
+function fmtElapsed(ms) {
+  const m = Math.max(0, Math.floor(ms / 60000));
+  if (m < 60) return m + ' мин';
+  return Math.floor(m / 60) + ' ч ' + String(m % 60).padStart(2, '0') + ' мин';
+}
+function tickElapsed() {
+  document.querySelectorAll('#app4 .rl-elapsed').forEach(el => {
+    const st = Number(el.dataset.started);
+    if (!st) return;
+    const ms = Date.now() - st;
+    el.textContent = fmtElapsed(ms);
+    const pill = el.closest('.route-live');
+    if (pill) pill.classList.toggle('over-3h', ms > 3 * 60 * 60 * 1000);
+  });
+}
+setInterval(tickElapsed, 20000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) tickElapsed(); });
+
+// ─── Завершить встречу одной кнопкой (то же, что «Завершить» в меню статуса) ───
+function quickFinishMeeting(item) {
+  item.status = 'done';
+  item.startedAt = null;
+  saveRouteState(routeState);
+  renderRoute();
+  if (typeof updateDrawerRoutes === 'function') updateDrawerRoutes();
+  updateActivitiesBadge();
+  _mapHash = '';
+  if (map) renderMapMarkers();
+  vibro(15);
+  showSuccessNotification('Встреча проведена', 'done');
+}
+
+// ─── Адрес уже пробовали искать на карте и не нашли? ───
+function isAddrUnresolved(addr) {
+  const raw = (addr || '').trim();
+  if (!raw || typeof mapGeocache === 'undefined' || !mapGeocache) return false;
+  const key1 = applyCity(raw).trim();
+  let key2 = key1;
+  const city = getMyCity();
+  if (city && !key2.toLowerCase().includes(city.toLowerCase())) key2 = city + ', ' + key2;
+  // вручную указанные координаты (или найденные) — всё в порядке
+  if (Array.isArray(mapGeocache[key1]) || Array.isArray(mapGeocache[key2])) return false;
+  const has = (k) => Object.prototype.hasOwnProperty.call(mapGeocache, k);
+  return (has(key1) && mapGeocache[key1] === null) || (has(key2) && mapGeocache[key2] === null);
 }
 
 function sortRouteList(timeId) {
@@ -12595,6 +12693,8 @@ async function geocodeAddress(address) {
     return mapGeocache[cleanAddr]; // может быть null - уже пытались найти и не вышло
   }
 
+  let reached = false;   // хоть один сервис реально ответил?
+
   // ─── Nominatim (OpenStreetMap) — точнее для России ───
   try {
     const url = `https://nominatim.openstreetmap.org/search?` +
@@ -12607,6 +12707,7 @@ async function geocodeAddress(address) {
       headers: { 'User-Agent': 'MVS-Reports-App/1.0' }
     });
     const data = await response.json();
+    reached = true;
 
     if (data && data.length > 0) {
       // Если указан «Мой город» — берём результат, который реально в этом городе
@@ -12636,6 +12737,7 @@ async function geocodeAddress(address) {
       `https://photon.komoot.io/api/?q=${encodeURIComponent(cleanAddr)}&limit=1`
     );
     const data = await response.json();
+    reached = true;
 
     if (data && data.features && data.features.length > 0) {
       const geom = data.features[0].geometry;
@@ -12661,9 +12763,12 @@ async function geocodeAddress(address) {
     console.warn('Photon error:', e);
   }
 
-  // Кэшируем и неудачный результат (null), чтобы не долбить API на каждый рендер
-  mapGeocache[cleanAddr] = null;
-  saveGeocache();
+  // Кэшируем «не найден» только если сервисы реально ответили.
+  // Если связи не было — не запоминаем, чтобы адрес нашёлся позже.
+  if (reached) {
+    mapGeocache[cleanAddr] = null;
+    saveGeocache();
+  }
   return null;
 }
 function saveGeocache() {
