@@ -5936,9 +5936,10 @@ body.dark .r1-totals.tr-bad {
 }
 </style>
 <style id="route-card-upgrades">
-/* ─── Кнопка «Завершить» ─── */
+/* ─── Кнопка «Завершить» (без отдельного индикатора «В работе») ─── */
 .route-finish-btn {
-  display: inline-flex; align-items: center; gap: 5px;
+  margin-left: auto;
+  display: inline-flex; align-items: center; gap: 6px;
   padding: 8px 12px; border: none; border-radius: 10px;
   background: linear-gradient(135deg, #2ecc71, #27ae60); color: #fff;
   font-family: inherit; font-size: 12px; font-weight: 800; letter-spacing: .2px;
@@ -5947,7 +5948,16 @@ body.dark .r1-totals.tr-bad {
   -webkit-tap-highlight-color: transparent; transition: transform .12s;
 }
 .route-finish-btn:active { transform: scale(.94); }
-.route-live .rl-elapsed { font-variant-numeric: tabular-nums; }
+.route-finish-btn.over-3h {
+  background: linear-gradient(135deg, #e74c3c, #c0392b);
+  box-shadow: 0 2px 8px rgba(192, 57, 43, .4);
+}
+.route-finish-btn .rl-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: #fff;
+  box-shadow: 0 0 0 0 rgba(255,255,255,.7);
+  animation: rlPulse 1.6s ease-in-out infinite;
+  flex-shrink: 0;
+}
 
 /* ─── Плашка «Нет на карте» ─── */
 .route-unresolved {
@@ -5964,21 +5974,21 @@ body.dark .route-unresolved {
 }
 </style>
 <style id="route-type-select">
-/* ─── Тип встречи: выпадающий выбор ─── */
+/* ─── Тип встречи: компактная строка-выбор, без рамки ─── */
 .route-type-btn {
   --tc: #2e86c1;
-  display: inline-flex; align-items: center; gap: 8px; max-width: 100%;
-  margin-top: 8px; padding: 7px 10px 7px 12px;
-  border: 1.5px solid rgba(0, 0, 0, .14); border-radius: 10px;
-  background: #fff; color: #2c3e50; box-shadow: inset 3px 0 0 var(--tc);
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+  margin-top: 6px; padding: 2px 0;
+  border: none; background: transparent; box-shadow: none;
+  color: var(--tc);
   font-family: inherit; font-size: 13px; font-weight: 700; line-height: 1.2; text-align: left;
-  cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform .12s;
+  cursor: pointer; -webkit-tap-highlight-color: transparent; transition: opacity .12s;
 }
 .route-type-btn.cat-b2b { --tc: #8e44ad; }
-.route-type-btn .rtb-up { font-size: 11px; font-weight: 800; color: var(--tc); }
-.route-type-btn .rtb-arrow { font-size: 12px; opacity: .6; margin-left: 2px; }
-.route-type-btn:active { transform: scale(.96); }
-body.dark .route-type-btn { background: #2c3a48; color: #e8eef5; border-color: #3a4a5a; }
+.route-type-btn .rtb-up { font-size: 11px; font-weight: 800; opacity: .75; }
+.route-type-btn .rtb-arrow { font-size: 11px; opacity: .6; margin-left: 1px; }
+.route-type-btn:active { opacity: .6; }
+body.dark .route-type-btn { color: var(--tc); }
 #statusMenu .sm-up { margin-left: 14px; font-size: 11px; font-weight: 800; opacity: .55; }
 </style>
 </head>
@@ -6711,18 +6721,7 @@ function goToTab(n, animate = true) {
       }
     });
     
-    // ─── Скрыть продукты при уходе с «Сегодня» ───
-    const productsWrap = document.getElementById('productsWrap');
-    const toggleBtn = document.getElementById('productsToggleBtn');
-    if (productsWrap) productsWrap.classList.remove('open');
-    if (toggleBtn) {
-      const iconEl = toggleBtn.querySelector('.ptb-icon');
-      const textEl = toggleBtn.querySelector('.ptb-text');
-      if (iconEl) iconEl.textContent = '▼';
-      if (textEl) textEl.textContent = 'Показать продукты';
-    }
-    // Сбросить сохранённое состояние в localStorage
-    localStorage.removeItem('products_open');
+    // (продукты теперь видны всегда — прятать их при уходе с «Сегодня» больше не нужно)
   }
 
 
@@ -7898,24 +7897,15 @@ statusLine.className = 'route-status-line';
 // Бейдж статуса — идёт после подсказки
 statusLine.appendChild(statusBadge);
 
-// ─── Индикатор «В работе» — справа ───
+// ─── Встреча в работе: только кнопка «Завершить», без отдельного индикатора ───
 if (item.startedAt) {
   const elapsed = Date.now() - item.startedAt;
   const over3h = elapsed > 3 * 60 * 60 * 1000;
 
-  const live = document.createElement('div');
-  live.className = 'route-live' + (over3h ? ' over-3h' : '');
-  live.innerHTML = `
-    <span class="rl-dot"></span>
-    <span>В работе</span>
-  `;
-  statusLine.appendChild(live);
-
-  // ─── Быстрая кнопка «Завершить» ───
   const finishBtn = document.createElement('button');
   finishBtn.type = 'button';
-  finishBtn.className = 'route-finish-btn';
-  finishBtn.innerHTML = '<span>✓</span><span>Завершить</span>';
+  finishBtn.className = 'route-finish-btn' + (over3h ? ' over-3h' : '');
+  finishBtn.innerHTML = '<span class="rl-dot"></span><span>✓ Завершить</span>';
   finishBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     quickFinishMeeting(item);
@@ -8618,12 +8608,11 @@ function render1() {
   const app = document.getElementById('app1');
   app.innerHTML = '';
   SECTIONS1.forEach(section => {
-        // Секция «Встречи» — всегда открыта
+        // Секция «Встречи» — особая, рендерится отдельно (аккордеон после «Доп. продукты»)
     const alwaysOpen = (section.title === 'Встречи');
-    
 
-    // Все секции всегда свёрнуты при рендере, кроме «Встречи»
-    const isOpen = alwaysOpen;
+    // Обычные продуктовые секции теперь видны сразу
+    const isOpen = true;
     const sec = document.createElement('div');
     sec.className = 'section';
     sec.dataset.sectionTitle = section.title;
@@ -8847,41 +8836,26 @@ if (bizSection) {
 
   track.appendChild(slideB2B);
   swiperWrap.appendChild(track);
-  app.appendChild(swiperWrap);
+
+  // ─── Слайдер «Встречи» вставим ниже — в аккордеон после «Доп. продукты» ───
+  window._meetingsSwiperEl = swiperWrap;
 
   // ─── Инициализация свайпа ───
   setTimeout(() => {
     initMeetingsSwipe();
   }, 50);
 
-  // ─── Кнопка «Показать продукты» ───
-  const toggleBtn = document.createElement('button');
-  toggleBtn.className = 'products-toggle-btn';
-  toggleBtn.id = 'productsToggleBtn';
-  toggleBtn.innerHTML = `
-    <span class="ptb-icon">▼</span>
-    <span class="ptb-text">Показать продукты</span>
-  `;
-  app.appendChild(toggleBtn);
-
-  // ─── Контейнер для остальных секций ───
-  const productsWrap = document.createElement('div');
-  productsWrap.className = 'products-wrap';
-  productsWrap.id = 'productsWrap';
-  app.appendChild(productsWrap);
-
 } else if (section.title === 'Бизнес') {
   // ← Пропускаем B2B — уже добавлен в слайдер
   return;
 
 } else {
-  // ─── Остальные секции — в контейнер «Продукты» ───
+  // ─── Остальные секции — продукты, видны сразу (без аккордеона) ───
   let wrap = document.getElementById('productsWrap');
   if (!wrap) {
     wrap = document.createElement('div');
     wrap.id = 'productsWrap';
-    wrap.className = 'products-wrap';
-    wrap.style.display = 'none';
+    wrap.className = 'products-wrap open';
     app.appendChild(wrap);
   }
   wrap.appendChild(sec);
@@ -8922,6 +8896,51 @@ if (bizSection) {
   extraSec.appendChild(addBtn);
     const wrap2 = document.getElementById('productsWrap');
   if (wrap2) wrap2.appendChild(extraSec);
+
+  // ─── Аккордеон «Встречи» (B2C / B2B счётчики по типам) — свёрнут по умолчанию ───
+  const meetAccSec = document.createElement('div');
+  meetAccSec.className = 'section meet-accordion';
+
+  const meetAccTitle = document.createElement('div');
+  meetAccTitle.className = 'section-title sec-meet';
+  meetAccTitle.style.cursor = 'pointer';
+  meetAccTitle.style.display = 'flex';
+  meetAccTitle.style.justifyContent = 'space-between';
+  meetAccTitle.style.alignItems = 'center';
+  meetAccTitle.style.userSelect = 'none';
+
+  let meetCount = 0;
+  const meetSection = SECTIONS1.find(sc => sc.title === 'Встречи');
+  const bizSectionForCount = SECTIONS1.find(sc => sc.title === 'Бизнес');
+  if (meetSection) meetSection.items.forEach(it => { meetCount += getCount1(it.id); });
+  if (bizSectionForCount) bizSectionForCount.items.forEach(it => { meetCount += getCount1(it.id); });
+  meetCount += Number(getZK1()) || 0;
+  const meetCountBadge = meetCount > 0
+    ? `<span style="font-size:11px;font-weight:700;background:rgba(255,255,255,0.25);padding:2px 8px;border-radius:10px;margin-left:8px;">${meetCount}</span>`
+    : '';
+
+  const meetAccOpen = !!window._meetAccordionOpen;
+  meetAccTitle.innerHTML = `<span>Встречи${meetCountBadge}</span><span class="section-arrow" style="font-size:12px;opacity:0.85;transition:transform 0.2s;${meetAccOpen ? 'transform:rotate(180deg);' : ''}">▼</span>`;
+
+  const meetAccBody = document.createElement('div');
+  meetAccBody.className = 'section-body';
+  meetAccBody.style.display = meetAccOpen ? 'block' : 'none';
+  if (window._meetingsSwiperEl) meetAccBody.appendChild(window._meetingsSwiperEl);
+
+  meetAccTitle.addEventListener('click', () => {
+    const open = meetAccBody.style.display !== 'none';
+    const next = !open;
+    meetAccBody.style.display = next ? 'block' : 'none';
+    window._meetAccordionOpen = next;
+    const arrowEl = meetAccTitle.querySelector('.section-arrow');
+    if (arrowEl) arrowEl.style.transform = next ? 'rotate(180deg)' : 'rotate(0deg)';
+    vibro(8);
+    if (next) setTimeout(() => initMeetingsSwipe(), 50);
+  });
+
+  meetAccSec.appendChild(meetAccTitle);
+  meetAccSec.appendChild(meetAccBody);
+  app.appendChild(meetAccSec);
 
   const b2cSec = document.createElement('div');
   b2cSec.className = 'section';
