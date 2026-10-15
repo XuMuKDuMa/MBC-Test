@@ -5963,6 +5963,28 @@ body.dark .route-unresolved {
   background: rgba(28, 28, 30, .85); color: #ff8a80; border-color: rgba(255, 99, 88, .55);
 }
 </style>
+<style id="route-type-chips">
+/* ─── Тип встречи на карточке ─── */
+.route-type-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; width: 100%; }
+.rtype-chip {
+  display: inline-flex; align-items: baseline; gap: 5px;
+  padding: 6px 10px; line-height: 1.2;
+  border: 1.5px solid rgba(0, 0, 0, .14); border-radius: 10px;
+  background: #fff; color: #2c3e50;
+  font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background .15s, color .15s, border-color .15s, transform .12s, box-shadow .15s;
+}
+.rtype-chip .rtype-up { font-size: 10px; font-weight: 800; opacity: .6; }
+.rtype-chip:active { transform: scale(.95); }
+.rtype-chip.active { color: #fff; border-color: transparent; box-shadow: 0 0 0 2px rgba(255, 255, 255, .9), 0 2px 8px rgba(0, 0, 0, .25); }
+.rtype-chip.active .rtype-up { opacity: .95; }
+.rtype-chip.active > span:first-child::before { content: '✓ '; }
+.route-type-row.cat-b2c .rtype-chip.active { background: linear-gradient(135deg, #2e86c1, #1f618d); }
+.route-type-row.cat-b2b .rtype-chip.active { background: linear-gradient(135deg, #8e44ad, #6c3483); }
+body.dark .rtype-chip { background: #2c3a48; color: #e8eef5; border-color: #3a4a5a; }
+body.dark .rtype-chip.active { color: #fff; border-color: transparent; }
+</style>
 </head>
 <body class="tab-4">
 
@@ -7365,6 +7387,7 @@ function openStatusMenu(anchor, item, timeId) {
         const list = routeState.lists[timeId] || [];
         const idx = list.indexOf(item);
         if (idx >= 0) {
+          uncreditCard(item);
           list.splice(idx, 1);
           saveRouteState(routeState);
           renderRoute();
@@ -7380,6 +7403,7 @@ function openStatusMenu(anchor, item, timeId) {
         if (status === 'done' || status === 'ndz' || status === 'perenos') {
           item.startedAt = null;
         }
+        syncCardCredit(item);
         saveRouteState(routeState);
         renderRoute();
         updateDrawerRoutes();
@@ -7389,7 +7413,7 @@ function openStatusMenu(anchor, item, timeId) {
         vibro(15);
         if (!wasSame) {
           if (status === 'wait')    showSuccessNotification('Встреча в ожидании', 'wait');
-          if (status === 'done')    showSuccessNotification('Встреча проведена', 'done');
+          if (status === 'done')    { showSuccessNotification('Встреча проведена' + creditUpLabel(item.credited), 'done'); noTypeHint(item); }
           if (status === 'perenos') showSuccessNotification('Встреча отменена', 'perenos');
           if (status === 'ndz')     showSuccessNotification('Недозвон', 'ndz');
         }
@@ -7803,6 +7827,7 @@ btnB2C.textContent = 'B2C';
 btnB2C.addEventListener('click', (e) => {
   e.stopPropagation();
   item.category = 'b2c';
+  resetMtypeForCategory(item);
   saveRouteState(routeState);
   vibro(10);
   renderRoute();
@@ -7819,6 +7844,7 @@ btnB2B.textContent = 'B2B';
 btnB2B.addEventListener('click', (e) => {
   e.stopPropagation();
   item.category = 'b2b';
+  resetMtypeForCategory(item);
   saveRouteState(routeState);
   vibro(10);
   renderRoute();
@@ -7831,6 +7857,30 @@ catSwitch.appendChild(btnB2C);
 catSwitch.appendChild(btnB2B);
 
 card.appendChild(catSwitch);
+
+// ─── Тип встречи (набор зависит от B2C / B2B) ───
+if (item.status !== 'perenos' && item.status !== 'ndz') {
+  const typeRow = document.createElement('div');
+  typeRow.className = 'route-type-row cat-' + currentCat;
+  (getMeetingTypes()[currentCat] || []).forEach(t => {
+    const up = meetingTypeUp(t.id);
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'rtype-chip' + (item.mtype === t.id ? ' active' : '');
+    chip.innerHTML = `<span>${t.label}</span>` + (up ? `<span class="rtype-up">+${up.toFixed(2)}</span>` : '');
+    chip.addEventListener('click', (e) => {
+      e.stopPropagation();
+      item.mtype = (item.mtype === t.id) ? null : t.id;   // повторный тап — снять выбор
+      syncCardCredit(item);
+      saveRouteState(routeState);
+      vibro(10);
+      renderRoute();
+    });
+    chip.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+    typeRow.appendChild(chip);
+  });
+  card.appendChild(typeRow);
+}
 // ─── Строка со статусом и кнопкой «Начать» / индикатором ───
 const statusLine = document.createElement('div');
 statusLine.className = 'route-status-line';
@@ -8013,6 +8063,86 @@ card.appendChild(statusLine);
   return card;
 }
 
+// ═══════════════════════════════════════════════
+//  ТИП ВСТРЕЧИ НА КАРТОЧКЕ → автозапись УП в «Сегодня»
+// ═══════════════════════════════════════════════
+// id совпадают с реестром SECTIONS1 (кроме 'zk' — он ведётся отдельным полем ЗК)
+function getMeetingTypes() {
+  return {
+    b2c: [
+      { id: 'fd_meet_02',  label: 'ФД обычная' },
+      { id: 'fd_meet_035', label: 'ФД детская с вериф.' },
+      { id: 'fd_meet_dbo', label: 'ФД ДБО' },
+      { id: 'fd_meet_sim', label: 'ФД Сим' },
+    ],
+    b2b: [
+      { id: 'biz_rko',  label: 'РКО' },
+      { id: 'biz_ip',   label: 'Идентификация ИП' },
+      { id: 'biz_card', label: 'Бизнес карта' },
+      { id: 'zk',       label: 'ЗК' },
+    ],
+  };
+}
+function meetingTypeUp(mid) {
+  if (!mid) return 0;
+  try {
+    if (mid === 'zk') return ZK_COEF;
+    for (const sec of SECTIONS1) for (const it of sec.items) if (it.id === mid) return it.up;
+  } catch (e) {}
+  return 0;
+}
+function creditUpLabel(mid) {
+  const u = meetingTypeUp(mid);
+  return u ? ' · +' + u.toFixed(2) + ' УП' : '';
+}
+// +1 / −1 к счётчику в «Сегодня»
+function creditMeetingType(mid, delta) {
+  if (!mid) return;
+  if (mid === 'zk') {
+    const nv = Math.max(0, Math.round(num(getZK1())) + delta);
+    setZK1(nv ? String(nv) : '');
+    const inp = document.getElementById('zkInput1');
+    if (inp) inp.value = nv ? String(nv) : '';
+    return;
+  }
+  setCount1(mid, getCount1(mid) + delta);
+}
+// Приводит запись УП в соответствие с карточкой: «Готово» + выбран тип → записано, иначе → снято
+function syncCardCredit(item) {
+  if (!item) return;
+  const desired = (item.status === 'done' && item.mtype) ? item.mtype : null;
+  if (item.credited && item.credited !== desired) {
+    creditMeetingType(item.credited, -1);
+    item.credited = null;
+  }
+  if (desired && item.credited !== desired) {
+    creditMeetingType(desired, +1);
+    item.credited = desired;
+  }
+  saveRouteState(routeState);
+}
+// Карточку удаляют — снять УП, если он был записан
+function uncreditCard(item) {
+  if (item && item.credited) {
+    creditMeetingType(item.credited, -1);
+    item.credited = null;
+  }
+}
+// Если закрыли встречу без типа — мягкая подсказка
+function noTypeHint(item) {
+  if (item && !item.mtype) {
+    setTimeout(() => showToast('ℹ️ Тип встречи не выбран — УП не записан'), 1500);
+  }
+}
+// Тип не из текущей категории (сменили B2C ↔ B2B) — сбросить
+function resetMtypeForCategory(item) {
+  const list = getMeetingTypes()[item.category || 'b2c'] || [];
+  if (item.mtype && !list.some(t => t.id === item.mtype)) {
+    item.mtype = null;
+    syncCardCredit(item);
+  }
+}
+
 // ─── Время встречи в работе: «12 мин» / «1 ч 05 мин» ───
 function fmtElapsed(ms) {
   const m = Math.max(0, Math.floor(ms / 60000));
@@ -8036,6 +8166,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) tick
 function quickFinishMeeting(item) {
   item.status = 'done';
   item.startedAt = null;
+  syncCardCredit(item);
   saveRouteState(routeState);
   renderRoute();
   if (typeof updateDrawerRoutes === 'function') updateDrawerRoutes();
@@ -8043,7 +8174,8 @@ function quickFinishMeeting(item) {
   _mapHash = '';
   if (map) renderMapMarkers();
   vibro(15);
-  showSuccessNotification('Встреча проведена', 'done');
+  showSuccessNotification('Встреча проведена' + creditUpLabel(item.credited), 'done');
+  noTypeHint(item);
 }
 
 // ─── Адрес уже пробовали искать на карте и не нашли? ───
