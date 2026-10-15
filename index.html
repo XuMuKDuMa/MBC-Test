@@ -5896,6 +5896,45 @@ body.dark .manual .reasons-textarea:focus { background: #324354; border-color: #
 body.dark .btn-paste-fd { background: #1c3347; border-color: #2f5675; color: #7fb8e6; }
 body.dark .btn-paste-fd:active { background: #24445e; }
 </style>
+<style id="totals-glow">
+/* ─── Свечение плашки итогов по TR ─── */
+.r1-totals {
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.15s,
+              box-shadow 0.5s ease, border-color 0.5s ease;
+}
+.r1-totals.tr-good {
+  border-color: rgba(46, 204, 113, 0.6);
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.12),
+    0 0 0 1px rgba(46, 204, 113, 0.25),
+    0 0 18px 2px rgba(46, 204, 113, 0.40),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+.r1-totals.tr-bad {
+  border-color: rgba(231, 76, 60, 0.6);
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.12),
+    0 0 0 1px rgba(231, 76, 60, 0.25),
+    0 0 18px 2px rgba(231, 76, 60, 0.40),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+body.dark .r1-totals.tr-good {
+  border-color: rgba(74, 222, 128, 0.55);
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(74, 222, 128, 0.22),
+    0 0 22px 3px rgba(74, 222, 128, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+body.dark .r1-totals.tr-bad {
+  border-color: rgba(255, 99, 88, 0.55);
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 99, 88, 0.22),
+    0 0 22px 3px rgba(255, 99, 88, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+</style>
 </head>
 <body class="tab-4">
 
@@ -9133,6 +9172,18 @@ function renderTotals1() {
   document.getElementById('totalUPFD1').textContent = t.upFD.toFixed(2);
   document.getElementById('totalB2C1').textContent = `${t.b2cTotal}/${t.b2cDone}`;
   document.getElementById('totalB2B1').textContent = `${t.b2bTotal}/${t.b2bDone}`;
+
+  // ─── Свечение плашки по TR: состоявшиеся / назначенные (B2C + B2B) ───
+  // >= 90% — зелёное, меньше — красное, нет назначенных — без свечения
+  const trBar = document.getElementById('r1Totals');
+  if (trBar) {
+    const assigned = (t.b2cTotal || 0) + (t.b2bTotal || 0);
+    const doneAll = (t.b2cDone || 0) + (t.b2bDone || 0);
+    trBar.classList.remove('tr-good', 'tr-bad');
+    if (assigned > 0) {
+      trBar.classList.add(doneAll / assigned >= 0.9 ? 'tr-good' : 'tr-bad');
+    }
+  }
   const btn = document.getElementById('btnReport1');
 btn.disabled = getManual1('reasons').trim() === '';
   const dUP = document.getElementById('drawerTotalUP');
