@@ -6165,6 +6165,7 @@ body.dark .meet-accordion > .section-title.sec-meet {
 
 <div class="menu" id="menu3">
   <button id="btnOpenCityModal" style="color:#2980b9;">🏙 Мой город</button>
+  <button id="btnOpenRoutePoints" style="color:#00897b;">🚗 Начальная и конечная точка</button>
   <button id="btnToggleTheme">🌙 Сменить тему</button>
   <button id="btnResetTotalsMenu">🗑 Сбросить итоги за месяц</button>
   <button id="btnFixDupHistory">🔧 Исправить дубли в истории</button>
@@ -6311,6 +6312,32 @@ body.dark .meet-accordion > .section-title.sec-meet {
     </div>
 
     <button id="cityModalCancel" style="width:100%;margin-top:8px;padding:12px;border:none;border-radius:10px;background:#ecf0f1;color:#2c3e50;font-size:14px;font-weight:600;cursor:pointer;">Закрыть</button>
+  </div>
+</div>
+<!-- Модалка начальной и конечной точки маршрута -->
+<div class="modal-overlay" id="routePointsModal">
+  <div class="modal" style="max-width: 360px;">
+    <div class="emoji">🚗</div>
+    <h2 style="color:#00897b;">Точки маршрута</h2>
+    <p style="color:#666;margin-bottom:14px;font-size:13px;line-height:1.5;">
+      Километраж считается от начальной точки через все адреса дня до конечной. Пиши адрес вместе с городом.
+    </p>
+    <div style="text-align:left;margin-bottom:12px;">
+      <label style="display:block;font-size:12px;font-weight:600;color:#666;text-transform:uppercase;margin-bottom:4px;">Начальная точка (откуда выезжаешь)</label>
+      <input type="text" id="rpStart" class="quick-input" placeholder="например, Красногорск, ул. Ленина, 5" autocomplete="off">
+    </div>
+    <label style="display:flex;gap:8px;align-items:center;text-align:left;margin:0 0 12px;font-size:14px;cursor:pointer;">
+      <input type="checkbox" id="rpSame" checked style="width:18px;height:18px;"> Конечная точка та же (вернулся домой)
+    </label>
+    <div id="rpEndWrap" style="display:none;text-align:left;margin-bottom:14px;">
+      <label style="display:block;font-size:12px;font-weight:600;color:#666;text-transform:uppercase;margin-bottom:4px;">Конечная точка (где закончил)</label>
+      <input type="text" id="rpEnd" class="quick-input" placeholder="например, Красногорск, ул. Мира, 10" autocomplete="off">
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button id="rpReset" style="flex:1;padding:13px;border:none;border-radius:10px;background:#fdecec;color:#c0392b;font-size:14px;font-weight:600;cursor:pointer;">🗑 Сбросить</button>
+      <button id="rpSave" style="flex:2;padding:13px;border:none;border-radius:10px;background:#00897b;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">✓ Сохранить</button>
+    </div>
+    <button id="rpCancel" style="width:100%;margin-top:8px;padding:12px;border:none;border-radius:10px;background:#ecf0f1;color:#2c3e50;font-size:14px;font-weight:600;cursor:pointer;">Закрыть</button>
   </div>
 </div>
 <div class="modal-overlay" id="monthlyReportModal">
@@ -9985,6 +10012,263 @@ function closeCoordsModal() {
   _coordsEditingItem = null;
   _coordsEditingAddr = null;
 }
+
+/* ═══════════════════════════════════════════════
+   КИЛОМЕТРАЖ: точки маршрута, расчёт по дорогам (OSRM), история по дням
+   ═══════════════════════════════════════════════ */
+function kmLoadPoints() {
+  try {
+    const p = JSON.parse(localStorage.getItem('route_points') || '{}') || {};
+    return { start: (p.start || '').trim(), end: (p.end || '').trim(), sameEnd: p.sameEnd !== false };
+  } catch (e) { return { start: '', end: '', sameEnd: true }; }
+}
+function kmSavePoints(p) { try { localStorage.setItem('route_points', JSON.stringify(p)); } catch (e) {} }
+function kmLoadHistory() {
+  try { return JSON.parse(localStorage.getItem('km_history') || '{}') || {}; } catch (e) { return {}; }
+}
+function kmSaveHistory(h) { try { localStorage.setItem('km_history', JSON.stringify(h)); } catch (e) {} }
+function kmDayKey() {
+  const d = new Date();
+  if (d.getHours() >= 23) d.setDate(d.getDate() + 1);   // как у рабочего дня приложения
+  return d.toLocaleDateString('ru-RU');
+}
+function kmFmt(km) { return (Math.round(km * 10) / 10).toFixed(1).replace('.', ',') + ' км'; }
+function kmHaversine(a, b) {
+  const R = 6371, rad = Math.PI / 180;
+  const dLat = (b[0] - a[0]) * rad, dLon = (b[1] - a[1]) * rad;
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * rad) * Math.cos(b[0] * rad) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+// Расстояние по дорогам для машины. Если сервис недоступен — по прямой × 1.3 (approx = true)
+async function kmRoadDistance(coords) {
+  if (coords.length < 2) return { km: 0, approx: false };
+  try {
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 15000);
+    const path = coords.map(c => c[1].toFixed(6) + ',' + c[0].toFixed(6)).join(';');
+    const r = await fetch('https://router.project-osrm.org/route/v1/driving/' + path + '?overview=false', { signal: ctrl.signal });
+    clearTimeout(to);
+    const d = await r.json();
+    if (d && d.code === 'Ok' && d.routes && d.routes[0]) return { km: d.routes[0].distance / 1000, approx: false };
+  } catch (e) { console.warn('OSRM error:', e); }
+  let sum = 0;
+  for (let i = 1; i < coords.length; i++) sum += kmHaversine(coords[i - 1], coords[i]);
+  return { km: sum * 1.3, approx: true };
+}
+function kmGatherStops() {
+  const stops = [];
+  ROUTE_TIMES.forEach(t => {
+    (routeState.lists[t.id] || []).forEach(it => {
+      if (it.addr && it.addr.trim() && it.status !== 'perenos') stops.push(it.addr.trim());   // отменённые не в счёт
+    });
+  });
+  return stops;
+}
+function kmSignature() {
+  const p = kmLoadPoints();
+  return JSON.stringify([getMyCity(), p.start, p.sameEnd ? p.start : p.end, kmGatherStops()]);
+}
+async function kmGeocode(addr, noCity) {
+  const t0 = Date.now();
+  const c = await geocodeAddress(addr, noCity);
+  if (Date.now() - t0 > 80) await new Promise(r => setTimeout(r, 1100));   // лимит Nominatim: ~1 запрос/сек
+  return c;
+}
+
+let _kmBusy = false, _kmTimer = null;
+function kmSchedule() {
+  clearTimeout(_kmTimer);
+  _kmTimer = setTimeout(() => { kmRecalcToday(false); }, 4000);
+}
+async function kmRecalcToday(force) {
+  if (_kmBusy) return;
+  const key = kmDayKey();
+  const sig = kmSignature();
+  let h = kmLoadHistory();
+  if (!force && h[key] && h[key].sig === sig) return;
+
+  const stops = kmGatherStops();
+  if (!stops.length) {
+    if (h[key]) { delete h[key]; kmSaveHistory(h); kmRefreshSection(); }
+    return;
+  }
+  if (navigator.onLine === false) return;
+
+  _kmBusy = true;
+  try {
+    const p = kmLoadPoints();
+    const coords = [];
+    let skipped = 0, pointMissing = 0;
+    const push = (c) => {
+      const last = coords[coords.length - 1];
+      if (!last || Math.abs(last[0] - c[0]) > 1e-5 || Math.abs(last[1] - c[1]) > 1e-5) coords.push(c);
+    };
+    if (p.start) { const c = await kmGeocode(p.start, true); if (c) push(c); else pointMissing++; }
+    for (const addr of stops) {
+      const c = await kmGeocode(addr, false);
+      if (c) push(c); else skipped++;
+    }
+    const endAddr = p.sameEnd ? p.start : p.end;
+    if (endAddr) { const c = await kmGeocode(endAddr, true); if (c) push(c); else pointMissing++; }
+
+    const res = await kmRoadDistance(coords);
+    const h2 = kmLoadHistory();
+    h2[key] = {
+      km: Math.round(res.km * 10) / 10,
+      stops: stops.length - skipped,
+      skipped, pointMissing,
+      approx: res.approx,
+      sig: res.approx ? null : sig,     // при приближённом расчёте — попробуем ещё раз позже
+      ts: Date.now()
+    };
+    kmSaveHistory(h2);
+    kmRefreshSection();
+  } catch (e) {
+    console.warn('km calc error:', e);
+  } finally {
+    _kmBusy = false;
+  }
+  if (kmSignature() !== sig) kmSchedule();   // пока считали — маршрут поменялся
+}
+
+function kmMonthData() {
+  const h = kmLoadHistory();
+  const now = new Date();
+  const rows = [];
+  let total = 0;
+  Object.keys(h).forEach(ds => {
+    const p = ds.split('.');
+    if (p.length !== 3) return;
+    if (parseInt(p[1], 10) - 1 === now.getMonth() && parseInt(p[2], 10) === now.getFullYear()) {
+      rows.push(Object.assign({ date: ds, day: parseInt(p[0], 10) }, h[ds]));
+      total += h[ds].km || 0;
+    }
+  });
+  rows.sort((a, b) => a.day - b.day);
+  return { rows, total };
+}
+function kmSectionHtml() {
+  const open = !!window._kmOpen;
+  const { rows, total } = kmMonthData();
+  const pts = kmLoadPoints();
+  const avg = rows.length ? total / rows.length : 0;
+  const rowsHtml = rows.length === 0
+    ? '<div style="padding:16px;text-align:center;color:#888">Пока нет данных за этот месяц</div>'
+    : rows.map(r => `<div class="row" style="justify-content:space-between;align-items:center;">
+        <div class="name" style="flex:1">${r.date}</div>
+        <div style="text-align:right;">
+          <div style="font-weight:700;color:#00897b;font-size:14px;">${r.approx ? '≈ ' : ''}${kmFmt(r.km || 0)}</div>
+          <div style="font-weight:600;color:#95a5a6;font-size:11px;margin-top:2px;">${r.stops || 0} адр.${r.skipped ? ' · ' + r.skipped + ' не найден' : ''}</div>
+        </div>
+      </div>`).join('');
+  const hint = !pts.start
+    ? '<div style="padding:10px 14px;font-size:12px;color:#e67e22;">Начальная точка не задана — считается только между адресами. Задай её в меню ⋮ → «Начальная и конечная точка».</div>'
+    : '';
+  return `<div class="section" id="kmSection">
+    <div class="section-title" id="kmToggle" style="background:#00897b;cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
+      <span>🚗 Километраж за месяц${rows.length ? ' · ' + kmFmt(total) : ''}</span>
+      <span id="kmArrow" style="transition:transform 0.2s;font-size:12px;${open ? 'transform:rotate(180deg);' : ''}">▼</span>
+    </div>
+    <div id="kmBody" style="display:${open ? 'block' : 'none'};">
+      ${hint}
+      ${rowsHtml}
+      ${rows.length ? `<div class="row" style="justify-content:space-between;align-items:center;font-weight:800;">
+        <div class="name" style="flex:1">Итого за месяц</div>
+        <div style="text-align:right;color:#00897b;">${kmFmt(total)}<div style="font-weight:600;color:#95a5a6;font-size:11px;margin-top:2px;">в среднем ${kmFmt(avg)} в день</div></div>
+      </div>` : ''}
+      <div style="padding:10px 12px;">
+        <button type="button" id="kmRecalc" style="width:100%;border:0;border-radius:10px;padding:11px;background:rgba(0,137,123,.12);color:#00897b;font-weight:700;font-size:13px;cursor:pointer;">↻ Пересчитать сегодня</button>
+      </div>
+    </div>
+  </div>`;
+}
+function kmBind() {
+  const tg = document.getElementById('kmToggle');
+  const body = document.getElementById('kmBody');
+  const ar = document.getElementById('kmArrow');
+  if (tg && body && ar) {
+    tg.addEventListener('click', () => {
+      const open = body.style.display !== 'none';
+      body.style.display = open ? 'none' : 'block';
+      ar.style.transform = open ? 'rotate(0deg)' : 'rotate(180deg)';
+      window._kmOpen = !open;
+      vibro(10);
+    });
+  }
+  const rc = document.getElementById('kmRecalc');
+  if (rc) rc.addEventListener('click', () => {
+    vibro(12);
+    showToast('🚗 Считаю километраж…');
+    kmRecalcToday(true);
+  });
+}
+function kmRefreshSection() {
+  const el = document.getElementById('kmSection');
+  if (!el) return;
+  const tmp = document.createElement('div');
+  tmp.innerHTML = kmSectionHtml();
+  el.replaceWith(tmp.firstElementChild);
+  kmBind();
+}
+
+// ─── Модалка «Начальная и конечная точка» ───
+function kmOpenPointsModal() {
+  const p = kmLoadPoints();
+  document.getElementById('rpStart').value = p.start;
+  document.getElementById('rpEnd').value = p.end;
+  document.getElementById('rpSame').checked = p.sameEnd;
+  document.getElementById('rpEndWrap').style.display = p.sameEnd ? 'none' : 'block';
+  document.getElementById('routePointsModal').classList.add('show');
+}
+function kmClosePointsModal() { document.getElementById('routePointsModal').classList.remove('show'); }
+document.getElementById('btnOpenRoutePoints')?.addEventListener('click', () => {
+  document.getElementById('menu3')?.classList.remove('show');
+  vibro(10);
+  kmOpenPointsModal();
+});
+document.getElementById('rpSame')?.addEventListener('change', (e) => {
+  document.getElementById('rpEndWrap').style.display = e.target.checked ? 'none' : 'block';
+});
+document.getElementById('rpSave')?.addEventListener('click', async () => {
+  const p = {
+    start: document.getElementById('rpStart').value.trim(),
+    end: document.getElementById('rpEnd').value.trim(),
+    sameEnd: document.getElementById('rpSame').checked
+  };
+  kmSavePoints(p);
+  kmClosePointsModal();
+  vibro(15);
+  showToast(p.start ? '🚗 Точки сохранены, проверяю адрес…' : '🗑 Точки удалены');
+  if (p.start) {
+    const c = await geocodeAddress(p.start, true);
+    if (!c) showToast('⚠️ Начальная точка не найдена на карте — уточни адрес (с городом)');
+  }
+  kmRecalcToday(true);
+});
+document.getElementById('rpReset')?.addEventListener('click', () => {
+  if (!confirm('Сбросить начальную и конечную точки?')) return;
+  kmSavePoints({ start: '', end: '', sameEnd: true });
+  kmClosePointsModal();
+  vibro(15);
+  showToast('🗑 Точки удалены');
+  kmRecalcToday(true);
+});
+document.getElementById('rpCancel')?.addEventListener('click', kmClosePointsModal);
+document.getElementById('routePointsModal')?.addEventListener('click', (e) => {
+  if (e.target.id === 'routePointsModal') kmClosePointsModal();
+});
+
+// Пересчёт при любом изменении маршрута (с задержкой и проверкой, что что-то поменялось)
+(function () {
+  const orig = renderRoute;
+  renderRoute = function () {
+    const r = orig.apply(this, arguments);
+    try { kmSchedule(); } catch (e) {}
+    return r;
+  };
+})();
+kmSchedule();
+
 /* ═══════════════════════════════════════════════
    МОДАЛКА «МОЙ ГОРОД»
    ═══════════════════════════════════════════════ */
@@ -10279,6 +10563,7 @@ const trBlock = `
     <div class="section"><div class="section-title sec-total">${getMonthNameLocal()} — ${days} ${days === 1 ? 'день' : 'дней'}</div><div class="total-grid"><div class="total-card full"><div class="label">УП за месяц</div><div class="value">${monthUP.toFixed(2)}</div></div><div class="total-card"><div class="label">УП за сегодня</div><div class="value">${todayUP.toFixed(2)}</div></div>${plan > 0 ? (remains <= 0 ? `<div class="total-card ok"><div class="label">План выполнен</div><div class="value">🎉</div></div>` : `<div class="total-card"><div class="label">Осталось</div><div class="value">${remains.toFixed(2)}</div></div>`) : '<div class="total-card"><div class="label">Осталось</div><div class="value">—</div></div>'}<div class="total-card btn-sales" id="btnSalesChart"><div class="label">📊 Продажи</div><div class="value">→</div></div><div class="total-card btn-meetings" id="btnMeetingsChart"><div class="label">👥 B2C/B2B</div><div class="value">→</div></div>${plan > 0 ? `<div class="progress-bar"><div class="fill" style="width:${progress}%;"></div><div class="text">${progress.toFixed(1)}%</div></div>` : ''}</div></div>
         ${daysBlock}
     ${chartBlock}
+    ${kmSectionHtml()}
     ${trBlock}
     ${plan > 0 && remains > 0 ? `
 <div class="section">
@@ -10335,6 +10620,8 @@ const trBlock = `
         <div id="aiAnalysisResult3" style="display:none;margin-top:12px;padding:12px;border-radius:10px;background:rgba(127,127,127,.08);font-size:13px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;"></div>
       </div>
     </div>`;
+      kmBind();
+      kmRecalcToday(false);
       // ─── Привязка ИИ-помощника ───
   const aiRun3 = document.getElementById('runAiAnalysis3');
   const aiResult3 = document.getElementById('aiAnalysisResult3');
@@ -11336,7 +11623,8 @@ const BACKUP_KEYS = [
   'routes_v2', 'routes_last_day', 'routes_history', 'route_started_last_day',
   'quick_report_v2', 'quick_report_last_day', 'quick_report_sent_today',
   'quick_report_reminder_shown', 'morning_report_sent_today',
-  'monthly_report_last_shown', 'my_city', 'mvs_theme', 'map_geocache'
+  'monthly_report_last_shown', 'my_city', 'mvs_theme', 'map_geocache',
+  'route_points', 'km_history'
 ];
 
 document.getElementById('btnToggleTheme').addEventListener('click', () => {
@@ -12914,11 +13202,11 @@ function getUserLocation() {
 }
 
 // Обновление подписи города
-async function geocodeAddress(address) {
-  let cleanAddr = applyCity(address).trim();
+async function geocodeAddress(address, noCity) {
+  let cleanAddr = noCity ? String(address || '').trim() : applyCity(address).trim();
   if (!cleanAddr) return null;
   
-  const city = getMyCity();
+  const city = noCity ? '' : getMyCity();
   if (city && !cleanAddr.toLowerCase().includes(city.toLowerCase())) {
     cleanAddr = city + ', ' + cleanAddr;
   }
