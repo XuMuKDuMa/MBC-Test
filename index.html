@@ -6001,6 +6001,10 @@ body.dark .meet-accordion > .section-title.sec-meet {
 }
 .meet-accordion > .section-body { margin-top: 10px; }
 </style>
+<style id="route-pending-style">
+.route-pending-block { margin: 8px 8px 10px; }
+#screen4 .slot-grid + .route-pending-block { margin-top: 12px; }
+</style>
 <style id="route-card-compact-style">
 /* ─── Компактная карточка: «Готово» / «Отмена» — только время, адрес, печать и статус ─── */
 .route-card.route-card-compact .route-note-wrap,
@@ -6166,6 +6170,7 @@ body.dark .meet-accordion > .section-title.sec-meet {
 <div class="menu" id="menu3">
   <button id="btnOpenCityModal" style="color:#2980b9;">🏙 Мой город</button>
   <button id="btnOpenRoutePoints" style="color:#00897b;">🚗 Начальная и конечная точка</button>
+  <button id="btnOpenFuel" style="color:#e67e22;">⛽ Расход бензина</button>
   <button id="btnToggleTheme">🌙 Сменить тему</button>
   <button id="btnResetTotalsMenu">🗑 Сбросить итоги за месяц</button>
   <button id="btnFixDupHistory">🔧 Исправить дубли в истории</button>
@@ -6312,6 +6317,24 @@ body.dark .meet-accordion > .section-title.sec-meet {
     </div>
 
     <button id="cityModalCancel" style="width:100%;margin-top:8px;padding:12px;border:none;border-radius:10px;background:#ecf0f1;color:#2c3e50;font-size:14px;font-weight:600;cursor:pointer;">Закрыть</button>
+  </div>
+</div>
+<!-- Модалка расхода бензина -->
+<div class="modal-overlay" id="fuelModal">
+  <div class="modal" style="max-width: 340px;">
+    <div class="emoji">⛽</div>
+    <h2 style="color:#e67e22;">Расход бензина</h2>
+    <p style="color:#666;margin-bottom:14px;font-size:13px;line-height:1.5;">Затраты считаются по километражу: км × расход ÷ 100 × цена литра.</p>
+    <div style="text-align:left;margin-bottom:12px;">
+      <label style="display:block;font-size:12px;font-weight:600;color:#666;text-transform:uppercase;margin-bottom:4px;">Расход, л на 100 км</label>
+      <input type="text" inputmode="decimal" id="fuelCons" class="quick-input" placeholder="например, 8,5" autocomplete="off">
+    </div>
+    <div style="text-align:left;margin-bottom:14px;">
+      <label style="display:block;font-size:12px;font-weight:600;color:#666;text-transform:uppercase;margin-bottom:4px;">Цена литра, ₽</label>
+      <input type="text" inputmode="decimal" id="fuelPrice" class="quick-input" placeholder="например, 56,5" autocomplete="off">
+    </div>
+    <button id="fuelSave" style="width:100%;padding:13px;border:none;border-radius:10px;background:#e67e22;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">✓ Сохранить</button>
+    <button id="fuelCancel" style="width:100%;margin-top:8px;padding:12px;border:none;border-radius:10px;background:#ecf0f1;color:#2c3e50;font-size:14px;font-weight:600;cursor:pointer;">Закрыть</button>
   </div>
 </div>
 <!-- Модалка начальной и конечной точки маршрута -->
@@ -8470,8 +8493,8 @@ if (_openSlotId) {
       _mapHash = '';
       if (map) renderMapMarkers();
       setTimeout(() => {
-        const inputs = document.querySelectorAll(`#app4 .route-time-block .route-addr-input`);
-        const last = inputs[inputs.length - 1];
+        const inputs = document.querySelectorAll(`#app4 .route-time-block[data-time-id="${t.id}"] .route-addr-input`);
+        const last = Array.from(inputs).find(i => !i.value.trim()) || inputs[inputs.length - 1];
         if (last) { last.focus(); last.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
       }, 50);
     });
@@ -8483,16 +8506,38 @@ if (_openSlotId) {
 
 frag.appendChild(grid);
 
+// ─── Непроведённые встречи (ждут / НДЗ / новые) — по очереди слотов ───
+let pendingCount = 0;
+ROUTE_TIMES.forEach(t => {
+  if (_openSlotId) return;   // слот открыт — его встречи уже показаны внутри слота
+  const pend = (routeState.lists[t.id] || []).filter(x => x.status !== 'done' && x.status !== 'perenos');
+  if (!pend.length) return;
+  pendingCount += pend.length;
+  const pblock = document.createElement('div');
+  pblock.className = 'route-time-block route-pending-block';
+  pblock.dataset.timeId = t.id;
+  const ph = document.createElement('div');
+  ph.className = 'route-time-header';
+  ph.innerHTML = `
+    <div class="rth-left"><span>${t.label}</span></div>
+    <div class="rth-right"><div class="rth-count">${pend.length}</div></div>
+  `;
+  pblock.appendChild(ph);
+  const pbody = document.createElement('div');
+  pbody.className = 'route-time-body';
+  pend.forEach(item => pbody.appendChild(buildRouteCard(item, t.id, t.label)));
+  pblock.appendChild(pbody);
+  frag.appendChild(pblock);
+});
 
-
-// ─── Подсказка ПОСЛЕ слотов ───
-if (window._showTapHint) {
+// ─── Подсказка ПОСЛЕ слотов (только если непроведённых нет) ───
+if (window._showTapHint && pendingCount === 0) {
   window._showTapHint = false;
   const tapHint = document.createElement('div');
   tapHint.className = 'tap-hint';
   tapHint.innerHTML = `
     <div class="tap-hint-icon">👆</div>
-    <div class="tap-hint-text">Тапни на слот, чтобы увидеть встречи</div>
+    <div class="tap-hint-text">Все встречи проведены — тапни на слот, чтобы посмотреть</div>
   `;
     frag.appendChild(tapHint);
 }   
@@ -8514,11 +8559,8 @@ if (typeof updateB2cField === 'function') {
   let hasLive = false;
   ROUTE_TIMES.forEach(t => {
     const list = routeState.lists[t.id] || [];
-    const block = app.querySelector(`.route-time-block[data-time-id="${t.id}"]`);
-    if (!block) return;
-
-    // Берём карточки в этом блоке — их порядок совпадает с list (после sortRouteList)
-    const cards = block.querySelectorAll('.route-card');
+    const cards = app.querySelectorAll(`.route-time-block[data-time-id="${t.id}"] .route-card`);
+    if (!cards.length) return;
     
     // Сопоставляем по индексу
     let cardIdx = 0;
@@ -10222,6 +10264,7 @@ function kmBind() {
   document.querySelectorAll('#kmBody .km-row').forEach(row => {
     row.addEventListener('click', () => { vibro(10); kmEditDay(row.dataset.date); });
   });
+  fuelBind();
 }
 // Ввести / исправить километраж за день вручную
 function kmEditDay(dateStr) {
@@ -10251,6 +10294,12 @@ function kmRefreshSection() {
   const tmp = document.createElement('div');
   tmp.innerHTML = kmSectionHtml();
   el.replaceWith(tmp.firstElementChild);
+  const fel = document.getElementById('fuelSection');
+  if (fel) {
+    const tmp2 = document.createElement('div');
+    tmp2.innerHTML = fuelSectionHtml();
+    fel.replaceWith(tmp2.firstElementChild);
+  }
   kmBind();
 }
 
@@ -10311,6 +10360,117 @@ document.getElementById('routePointsModal')?.addEventListener('click', (e) => {
   };
 })();
 kmSchedule();
+
+
+/* ═══════════════════════════════════════════════
+   БЕНЗИН: расход и цена, график затрат по дням
+   ═══════════════════════════════════════════════ */
+function fuelLoad() {
+  try {
+    const p = JSON.parse(localStorage.getItem('fuel_settings') || '{}') || {};
+    return { cons: parseFloat(p.cons) || 0, price: parseFloat(p.price) || 0 };
+  } catch (e) { return { cons: 0, price: 0 }; }
+}
+function fuelMoney(v) { return Math.round(v).toLocaleString('ru-RU') + ' ₽'; }
+function fuelLiters(v) { return (Math.round(v * 10) / 10).toFixed(1).replace('.', ',') + ' л'; }
+function fuelChartSvg(days) {
+  const bw = 34, gap = 10, H = 190, top = 24, bottom = 24;
+  const W = Math.max(days.length * (bw + gap) + gap, 280);
+  const max = Math.max(1, ...days.map(d => d.cost));
+  let bars = '';
+  days.forEach((d, i) => {
+    const h = Math.max(3, (d.cost / max) * (H - top - bottom));
+    const x = gap + i * (bw + gap);
+    const y = H - bottom - h;
+    bars += `<rect x="${x}" y="${y}" width="${bw}" height="${h}" rx="7" fill="url(#fuelGrad)"/>
+      <text x="${x + bw / 2}" y="${y - 6}" text-anchor="middle" font-size="10" font-weight="700" fill="#e67e22">${Math.round(d.cost)}</text>
+      <text x="${x + bw / 2}" y="${H - 8}" text-anchor="middle" font-size="11" fill="#95a5a6">${d.day}</text>`;
+  });
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="display:block;">
+    <defs><linearGradient id="fuelGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f5b041"/><stop offset="1" stop-color="#e67e22"/></linearGradient></defs>
+    <line x1="0" y1="${H - bottom}" x2="${W}" y2="${H - bottom}" stroke="#95a5a6" stroke-opacity=".35"/>
+    ${bars}</svg>`;
+}
+function fuelSectionHtml() {
+  const open = !!window._fuelOpen;
+  const f = fuelLoad();
+  const ok = f.cons > 0 && f.price > 0;
+  const { rows } = kmMonthData();
+  const days = rows.map(r => {
+    const l = (r.km || 0) * f.cons / 100;
+    return { day: r.day, km: r.km || 0, l, cost: l * f.price };
+  });
+  const sumCost = days.reduce((a, d) => a + d.cost, 0);
+  const sumL = days.reduce((a, d) => a + d.l, 0);
+  const sumKm = days.reduce((a, d) => a + d.km, 0);
+  let body;
+  if (!ok) {
+    body = `<div style="padding:14px;font-size:13px;color:#e67e22;">Укажи расход и цену бензина, чтобы увидеть затраты.</div>`;
+  } else if (!days.length) {
+    body = `<div style="padding:16px;text-align:center;color:#888">Пока нет данных за этот месяц</div>`;
+  } else {
+    body = `<div style="padding:14px 6px 4px;overflow-x:auto;">${fuelChartSvg(days)}</div>
+      <div class="row" style="justify-content:space-between;align-items:center;font-weight:800;">
+        <div class="name" style="flex:1">Итого за месяц</div>
+        <div style="text-align:right;color:#e67e22;">${fuelMoney(sumCost)}<div style="font-weight:600;color:#95a5a6;font-size:11px;margin-top:2px;">${fuelLiters(sumL)} · ${kmFmt(sumKm)}</div></div>
+      </div>
+      <div class="row" style="justify-content:space-between;align-items:center;">
+        <div class="name" style="flex:1">В среднем за рабочий день</div>
+        <div style="font-weight:700;color:#e67e22;">${fuelMoney(sumCost / days.length)}</div>
+      </div>`;
+  }
+  return `<div class="section" id="fuelSection">
+    <div class="section-title" id="fuelToggle" style="background:#e67e22;cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
+      <span>⛽ Бензин за месяц${ok && days.length ? ' · ' + fuelMoney(sumCost) : ''}</span>
+      <span id="fuelArrow" style="transition:transform 0.2s;font-size:12px;${open ? 'transform:rotate(180deg);' : ''}">▼</span>
+    </div>
+    <div id="fuelBody" style="display:${open ? 'block' : 'none'};">
+      ${body}
+      <div style="padding:10px 12px;">
+        <button type="button" id="fuelSet" style="width:100%;border:0;border-radius:10px;padding:11px;background:rgba(230,126,34,.14);color:#e67e22;font-weight:700;font-size:13px;cursor:pointer;">⚙ Расход и цена бензина${ok ? ' (' + String(f.cons).replace('.', ',') + ' л · ' + String(f.price).replace('.', ',') + ' ₽)' : ''}</button>
+      </div>
+    </div>
+  </div>`;
+}
+function fuelBind() {
+  const tg = document.getElementById('fuelToggle');
+  const body = document.getElementById('fuelBody');
+  const ar = document.getElementById('fuelArrow');
+  if (tg && body && ar) {
+    tg.addEventListener('click', () => {
+      const open = body.style.display !== 'none';
+      body.style.display = open ? 'none' : 'block';
+      ar.style.transform = open ? 'rotate(0deg)' : 'rotate(180deg)';
+      window._fuelOpen = !open;
+      vibro(10);
+    });
+  }
+  document.getElementById('fuelSet')?.addEventListener('click', () => { vibro(10); fuelOpenModal(); });
+}
+function fuelOpenModal() {
+  const f = fuelLoad();
+  document.getElementById('fuelCons').value = f.cons ? String(f.cons).replace('.', ',') : '';
+  document.getElementById('fuelPrice').value = f.price ? String(f.price).replace('.', ',') : '';
+  document.getElementById('fuelModal').classList.add('show');
+}
+function fuelCloseModal() { document.getElementById('fuelModal').classList.remove('show'); }
+document.getElementById('btnOpenFuel')?.addEventListener('click', () => {
+  document.getElementById('menu3')?.classList.remove('show');
+  vibro(10);
+  fuelOpenModal();
+});
+document.getElementById('fuelSave')?.addEventListener('click', () => {
+  const cons = parseFloat(document.getElementById('fuelCons').value.trim().replace(',', '.'));
+  const price = parseFloat(document.getElementById('fuelPrice').value.trim().replace(',', '.'));
+  if (!(cons > 0 && cons < 60) || !(price > 0 && price < 500)) { showToast('⚠️ Проверь расход и цену'); return; }
+  try { localStorage.setItem('fuel_settings', JSON.stringify({ cons, price })); } catch (e) {}
+  fuelCloseModal();
+  vibro(15);
+  showToast('⛽ Сохранено');
+  kmRefreshSection();
+});
+document.getElementById('fuelCancel')?.addEventListener('click', fuelCloseModal);
+document.getElementById('fuelModal')?.addEventListener('click', (e) => { if (e.target.id === 'fuelModal') fuelCloseModal(); });
 
 /* ═══════════════════════════════════════════════
    МОДАЛКА «МОЙ ГОРОД»
@@ -10607,6 +10767,7 @@ const trBlock = `
         ${daysBlock}
     ${chartBlock}
     ${kmSectionHtml()}
+    ${fuelSectionHtml()}
     ${trBlock}
     ${plan > 0 && remains > 0 ? `
 <div class="section">
@@ -11667,7 +11828,7 @@ const BACKUP_KEYS = [
   'quick_report_v2', 'quick_report_last_day', 'quick_report_sent_today',
   'quick_report_reminder_shown', 'morning_report_sent_today',
   'monthly_report_last_shown', 'my_city', 'mvs_theme', 'map_geocache',
-  'route_points', 'km_history'
+  'route_points', 'km_history', 'fuel_settings'
 ];
 
 document.getElementById('btnToggleTheme').addEventListener('click', () => {
