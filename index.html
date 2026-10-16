@@ -8209,6 +8209,9 @@ function effectiveMtype(item) {
 function syncCardCredit(item) {
   if (!item) return;
   const desired = (item.status === 'done') ? effectiveMtype(item) : null;
+  // Время закрытия встречи — нужно для порядка точек в километраже
+  if (item.status === 'done') { if (!item.doneAt) item.doneAt = Date.now(); }
+  else if (item.doneAt) item.doneAt = null;
   if (item.credited && item.credited !== desired) {
     creditMeetingType(item.credited, -1);
     item.credited = null;
@@ -10056,17 +10059,19 @@ async function kmRoadDistance(coords) {
   return { km: sum * 1.3, approx: true };
 }
 function kmGatherStops() {
-  // Считаем только адреса, куда реально ездили: нажали «Маршрут» на карте.
-  // Порядок — как нажимали (так и ехали). Отменённые не в счёт.
+  // Ездили на адрес, если: нажали «Маршрут» на карте ИЛИ встреча закрыта «Готово».
+  // Порядок точек: по времени нажатия «Маршрут» / закрытия встречи; если времени нет — по слотам.
+  const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
   const visited = [];
-  ROUTE_TIMES.forEach(t => {
-    (routeState.lists[t.id] || []).forEach(it => {
-      if (it.addr && it.addr.trim() && it.navAt && it.status !== 'perenos') {
-        visited.push({ addr: it.addr.trim(), at: it.navAt });
-      }
+  ROUTE_TIMES.forEach((t, si) => {
+    (routeState.lists[t.id] || []).forEach((it, ii) => {
+      if (!it || !it.addr || !it.addr.trim() || it.status === 'perenos') return;
+      if (!(it.navAt || it.status === 'done')) return;
+      const at = it.navAt || it.doneAt || (dayStart.getTime() + si * 3600000 + ii * 1000);
+      visited.push({ addr: it.addr.trim(), at });
     });
   });
-  visited.sort((a, b) => a.at - b.at);
+  visited.sort((x, y) => x.at - y.at);
   return visited.map(v => v.addr);
 }
 function kmSignature() {
@@ -10090,6 +10095,10 @@ async function kmRecalcToday(force) {
   const key = kmDayKey();
   const sig = kmSignature();
   let h = kmLoadHistory();
+  if (h[key] && h[key].manual) {
+    if (force !== 'reset') return;          // введено вручную — не трогаем
+    delete h[key]; kmSaveHistory(h);        // «Пересчитать сегодня» снимает ручное значение
+  }
   if (!force && h[key] && h[key].sig === sig) return;
 
   const stops = kmGatherStops();
@@ -10159,11 +10168,11 @@ function kmSectionHtml() {
   const avg = rows.length ? total / rows.length : 0;
   const rowsHtml = rows.length === 0
     ? '<div style="padding:16px;text-align:center;color:#888">Пока нет данных за этот месяц</div>'
-    : rows.map(r => `<div class="row" style="justify-content:space-between;align-items:center;">
+    : rows.map(r => `<div class="row km-row" data-date="${r.date}" style="justify-content:space-between;align-items:center;cursor:pointer;">
         <div class="name" style="flex:1">${r.date}</div>
         <div style="text-align:right;">
-          <div style="font-weight:700;color:#00897b;font-size:14px;">${r.approx ? '≈ ' : ''}${kmFmt(r.km || 0)}</div>
-          <div style="font-weight:600;color:#95a5a6;font-size:11px;margin-top:2px;">${r.stops || 0} адр.${r.skipped ? ' · ' + r.skipped + ' не найден' : ''}</div>
+          <div style="font-weight:700;color:#00897b;font-size:14px;">${r.approx && !r.manual ? '≈ ' : ''}${kmFmt(r.km || 0)}</div>
+          <div style="font-weight:600;color:#95a5a6;font-size:11px;margin-top:2px;">${r.manual ? 'вручную ✎' : (r.stops || 0) + ' адр.' + (r.skipped ? ' · ' + r.skipped + ' не найден' : '')}</div>
         </div>
       </div>`).join('');
   const hint = !pts.start
@@ -10181,9 +10190,11 @@ function kmSectionHtml() {
         <div class="name" style="flex:1">Итого за месяц</div>
         <div style="text-align:right;color:#00897b;">${kmFmt(total)}<div style="font-weight:600;color:#95a5a6;font-size:11px;margin-top:2px;">в среднем ${kmFmt(avg)} в день</div></div>
       </div>` : ''}
-      <div style="padding:10px 12px;">
-        <button type="button" id="kmRecalc" style="width:100%;border:0;border-radius:10px;padding:11px;background:rgba(0,137,123,.12);color:#00897b;font-weight:700;font-size:13px;cursor:pointer;">↻ Пересчитать сегодня</button>
+      <div style="padding:10px 12px;display:flex;gap:8px;">
+        <button type="button" id="kmAdd" style="flex:1;border:0;border-radius:10px;padding:11px;background:rgba(0,137,123,.12);color:#00897b;font-weight:700;font-size:13px;cursor:pointer;">✎ Ввести вручную</button>
+        <button type="button" id="kmRecalc" style="flex:1;border:0;border-radius:10px;padding:11px;background:rgba(0,137,123,.12);color:#00897b;font-weight:700;font-size:13px;cursor:pointer;">↻ Пересчитать сегодня</button>
       </div>
+      <div style="padding:0 14px 12px;font-size:11px;color:#95a5a6;">Тап по дню — исправить километраж (например, по одометру).</div>
     </div>
   </div>`;
 }
@@ -10204,8 +10215,35 @@ function kmBind() {
   if (rc) rc.addEventListener('click', () => {
     vibro(12);
     showToast('🚗 Считаю километраж…');
-    kmRecalcToday(true);
+    kmRecalcToday('reset');
   });
+  const add = document.getElementById('kmAdd');
+  if (add) add.addEventListener('click', () => { vibro(10); kmEditDay(kmDayKey()); });
+  document.querySelectorAll('#kmBody .km-row').forEach(row => {
+    row.addEventListener('click', () => { vibro(10); kmEditDay(row.dataset.date); });
+  });
+}
+// Ввести / исправить километраж за день вручную
+function kmEditDay(dateStr) {
+  const h = kmLoadHistory();
+  const cur = h[dateStr] ? String(h[dateStr].km).replace('.', ',') : '';
+  const ans = prompt('Километраж за ' + dateStr + ', км\n(оставь пустым и нажми OK, чтобы убрать запись)', cur);
+  if (ans === null) return;
+  const t = ans.trim().replace(',', '.');
+  if (t === '') {
+    delete h[dateStr];
+    kmSaveHistory(h);
+    kmRefreshSection();
+    if (dateStr === kmDayKey()) kmRecalcToday(true);   // для сегодня — вернуть авто-расчёт
+    return;
+  }
+  const v = parseFloat(t);
+  if (!isFinite(v) || v < 0 || v > 3000) { showToast('⚠️ Введи число километров'); return; }
+  h[dateStr] = { km: Math.round(v * 10) / 10, manual: true, stops: 0, ts: Date.now() };
+  kmSaveHistory(h);
+  kmRefreshSection();
+  vibro(15);
+  showToast('✓ Сохранено: ' + kmFmt(v));
 }
 function kmRefreshSection() {
   const el = document.getElementById('kmSection');
