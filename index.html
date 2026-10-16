@@ -6001,6 +6001,22 @@ body.dark .meet-accordion > .section-title.sec-meet {
 }
 .meet-accordion > .section-body { margin-top: 10px; }
 </style>
+<style id="route-card-compact-style">
+/* ─── Компактная карточка: «Готово» / «Отмена» — только время, адрес, печать и статус ─── */
+.route-card.route-card-compact .route-note-wrap,
+.route-card.route-card-compact .route-category-switch,
+.route-card.route-card-compact .route-type-btn,
+.route-card.route-card-compact .route-unresolved,
+.route-card.route-card-compact .route-coords-btn,
+.route-card.route-card-compact .route-mic-inline { display: none !important; }
+.route-card.route-card-compact { gap: 0; padding-top: 6px; padding-bottom: 6px; }
+.route-card.route-card-compact .route-status-line { margin-top: 2px; align-items: center; }
+.route-card.route-card-compact .status-stamp {
+  position: relative; right: auto; bottom: auto;
+  width: 46px; height: 46px; margin: -6px 4px -6px auto; flex-shrink: 0;
+}
+.products-title-bar { cursor: default; pointer-events: none; }
+</style>
 <style id="route-type-select">
 /* ─── Тип встречи: кнопка в стиле переключателя B2C / B2B ─── */
 .route-type-btn {
@@ -6755,12 +6771,6 @@ function goToTab(n, animate = true) {
       const a = sc.querySelector(':scope > .section-title .section-arrow');
       if (a) a.style.transform = 'rotate(0deg)';
     });
-    // «Список продуктов»
-    window._productsOpen = false;
-    const pw = document.getElementById('productsWrap');
-    if (pw) pw.classList.remove('open');
-    const pic = document.querySelector('#productsListBtn .ptb-icon');
-    if (pic) pic.style.transform = 'rotate(0deg)';
     // «Заявки» и «Доп. продукты»
     window._accState = {};
     document.querySelectorAll('#app1 .acc-sec').forEach(sc => {
@@ -7613,6 +7623,7 @@ function buildRouteCard(item, timeId, timeLabel) {
   if (item.status === 'done') card.classList.add('status-done');
   if (item.status === 'perenos') card.classList.add('status-perenos');
   if (item.status === 'ndz') card.classList.add('status-ndz');
+  if (item.status === 'done' || item.status === 'perenos') card.classList.add('route-card-compact');
   
    // ─── Карточки больше НЕ сворачиваются ───
 const isCollapsed = false;
@@ -8667,23 +8678,15 @@ function render1() {
 
   // ─── Радужная кнопка «Список продуктов» (аккордеон со всеми продуктами) ───
   window._accState = window._accState || {};
-  const prodBtn = document.createElement('button');
-  prodBtn.className = 'products-toggle-btn';
+  const prodBtn = document.createElement('div');
+  prodBtn.className = 'products-toggle-btn products-title-bar';
   prodBtn.id = 'productsListBtn';
-  prodBtn.innerHTML = `<span class="ptb-text">Список продуктов</span><span class="ptb-icon" style="${window._productsOpen ? 'transform:rotate(180deg);' : ''}">▼</span>`;
+  prodBtn.innerHTML = `<span class="ptb-text">Список продуктов</span>`;
   app.appendChild(prodBtn);
   const prodWrap = document.createElement('div');
   prodWrap.id = 'productsWrap';
-  prodWrap.className = 'products-wrap' + (window._productsOpen ? ' open' : '');
+  prodWrap.className = 'products-wrap open';
   app.appendChild(prodWrap);
-  prodBtn.addEventListener('click', () => {
-    const nxt = !prodWrap.classList.contains('open');
-    prodWrap.classList.toggle('open', nxt);
-    window._productsOpen = nxt;
-    const ic = prodBtn.querySelector('.ptb-icon');
-    if (ic) ic.style.transform = nxt ? 'rotate(180deg)' : 'rotate(0deg)';
-    vibro(10);
-  });
   SECTIONS1.forEach(section => {
         // Секция «Встречи» — особая, рендерится отдельно (аккордеон после «Доп. продукты»)
     const alwaysOpen = (section.title === 'Встречи');
