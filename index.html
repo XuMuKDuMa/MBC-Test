@@ -10056,13 +10056,18 @@ async function kmRoadDistance(coords) {
   return { km: sum * 1.3, approx: true };
 }
 function kmGatherStops() {
-  const stops = [];
+  // Считаем только адреса, куда реально ездили: нажали «Маршрут» на карте.
+  // Порядок — как нажимали (так и ехали). Отменённые не в счёт.
+  const visited = [];
   ROUTE_TIMES.forEach(t => {
     (routeState.lists[t.id] || []).forEach(it => {
-      if (it.addr && it.addr.trim() && it.status !== 'perenos') stops.push(it.addr.trim());   // отменённые не в счёт
+      if (it.addr && it.addr.trim() && it.navAt && it.status !== 'perenos') {
+        visited.push({ addr: it.addr.trim(), at: it.navAt });
+      }
     });
   });
-  return stops;
+  visited.sort((a, b) => a.at - b.at);
+  return visited.map(v => v.addr);
 }
 function kmSignature() {
   const p = kmLoadPoints();
@@ -13677,6 +13682,19 @@ window.openNavigator = function(addrEncoded) {
   }
   const fullAddr = applyCity(addr);
   const encoded = encodeURIComponent(fullAddr);
+
+  // Отмечаем встречи по этому адресу: на адрес реально ездили (для километража)
+  try {
+    const norm = a => applyCity(a || '').trim().toLowerCase();
+    const target = norm(addr);
+    let marked = false;
+    ROUTE_TIMES.forEach(t => {
+      (routeState.lists[t.id] || []).forEach(it => {
+        if (it && it.addr && norm(it.addr) === target && !it.navAt) { it.navAt = Date.now(); marked = true; }
+      });
+    });
+    if (marked) { saveRouteState(routeState); kmSchedule(); }
+  } catch (e) { console.warn('nav mark error', e); }
 
   // Маршрут: «Моё местоположение → адрес»
   const url = 'https://yandex.ru/maps/?rtext=~' + encoded + '&rtt=auto';
