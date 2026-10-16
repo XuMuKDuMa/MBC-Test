@@ -1068,7 +1068,7 @@ body.dark #screen4 .slot-btn.slot-live[data-slot-id="t16_18"] .slot-summary-main
    ═══════════════════════════════════════════ */
 .vpn-warning {
   position: fixed;
-  top: -120px;
+  top: -160px;
   left: 50%;
   transform: translateX(-50%);
   background: linear-gradient(135deg, #f39c12, #e67e22);
@@ -1089,11 +1089,11 @@ body.dark #screen4 .slot-btn.slot-live[data-slot-id="t16_18"] .slot-summary-main
   pointer-events: none;
 }
 .vpn-warning.show {
-  top: 20px;
+  top: max(48px, calc(env(safe-area-inset-top, 0px) + 20px));
   opacity: 1;
 }
 .vpn-warning.hiding {
-  top: -120px;
+  top: -160px;
   opacity: 0;
   transition:
     top 0.5s cubic-bezier(0.55, 0, 0.68, 0.19),
@@ -6171,6 +6171,7 @@ body.dark .meet-accordion > .section-title.sec-meet {
   <button id="btnOpenCityModal" style="color:#2980b9;">🏙 Мой город</button>
   <button id="btnOpenRoutePoints" style="color:#00897b;">🚗 Начальная и конечная точка</button>
   <button id="btnOpenFuel" style="color:#e67e22;">⛽ Расход бензина</button>
+  <button id="btnCheckVpn" style="color:#2980b9;">🛡 Проверить VPN</button>
   <button id="btnToggleTheme">🌙 Сменить тему</button>
   <button id="btnResetTotalsMenu">🗑 Сбросить итоги за месяц</button>
   <button id="btnFixDupHistory">🔧 Исправить дубли в истории</button>
@@ -13174,13 +13175,13 @@ function showVpnWarning() {
   void el.offsetWidth;   // force reflow
   el.classList.add('show');
 
-  // Автоскрытие через 6 секунд
+  // Автоскрытие через 8 секунд
   _vpnWarningTimeout = setTimeout(() => {
     el.classList.add('hiding');
     setTimeout(() => {
       el.classList.remove('show', 'hiding');
     }, 600);
-  }, 6000);
+  }, 8000);
 }
 
 /* ─── Универсальный HTTP-запрос (fetch → fallback на XHR) ─── */
@@ -13242,57 +13243,71 @@ function checkVpnData(country, org, asn) {
   return false;
 }
 
-/* ─── Проверка VPN через несколько API (для WebView в APK) ─── */
-async function checkVpnAndWarn() {
-  if (_vpnCheckDone) return;
-  _vpnCheckDone = true;
-
-  const apis = [
-    'https://ipapi.co/json/',
-    'https://ipwho.is/',
-    'https://ipinfo.io/json',
-    'https://api.country.is/'
-  ];
-
-  for (const url of apis) {
-    try {
-      const d = await httpGetJson(url, 5000);
-      if (!d) continue;
-
-      // ipapi.co — {country_code, org, asn}
-      if (d.country_code !== undefined && d.org !== undefined) {
-        if (checkVpnData(d.country_code, d.org, d.asn)) return;
-        // console.log('✅ VPN не обнаружен (ipapi.co, country:', d.country_code, ')');  /* отладочный вывод отключён */
-        return;
-      }
-
-      // ipwho.is — {country_code, connection: {isp, asn}}
-      if (d.country_code !== undefined && d.connection) {
-        if (checkVpnData(d.country_code, d.connection.isp, d.connection.asn)) return;
-        // console.log('✅ VPN не обнаружен (ipwho.is, country:', d.country_code, ')');  /* отладочный вывод отключён */
-        return;
-      }
-
-      // ipinfo.io — {country, org}
-      if (d.country !== undefined && d.org !== undefined) {
-        if (checkVpnData(d.country, d.org)) return;
-        // console.log('✅ VPN не обнаружен (ipinfo.io, country:', d.country, ')');  /* отладочный вывод отключён */
-        return;
-      }
-
-      // api.country.is — {country}
-      if (d.country !== undefined) {
-        if (checkVpnData(d.country)) return;
-        // console.log('✅ VPN не обнаружен (country.is, country:', d.country, ')');  /* отладочный вывод отключён */
-        return;
-      }
-    } catch (e) {
-      console.warn('⚠️ API failed:', url, e.message);
-    }
-  }
-
-  // console.log('⚠️ Ни один API не ответил — VPN check пропущен');  /* отладочный вывод отключён */
+/* ─── Проверка VPN: несколько сервисов параллельно, берём первый ответивший ─── */
+const VPN_APIS = [
+  { url: 'https://ipapi.co/json/',                 map: d => d && d.country_code ? { country: d.country_code, org: (d.org || '') + ' ' + (d.asn || '') } : null },
+  { url: 'https://ipwho.is/',                      map: d => d && d.country_code ? { country: d.country_code, org: ((d.connection && d.connection.isp) || '') + ' ' + ((d.connection && d.connection.asn) || '') } : null },
+  { url: 'https://ipinfo.io/json',                 map: d => d && d.country ? { country: d.country, org: d.org || '' } : null },
+  { url: 'https://api.country.is/',                map: d => d && d.country ? { country: d.country, org: '' } : null },
+  { url: 'https://get.geojs.io/v1/ip/geo.json',    map: d => d && d.country_code ? { country: d.country_code, org: d.organization_name || '' } : null },
+  { url: 'https://api.ip.sb/geoip',                map: d => d && d.country_code ? { country: d.country_code, org: (d.isp || '') + ' ' + (d.organization || '') } : null }
+];
+function vpnFirstOk(tasks) {
+  return new Promise((resolve, reject) => {
+    let left = tasks.length;
+    tasks.forEach(t => t.then(v => {
+      if (v) resolve(v);
+      else if (--left === 0) reject(new Error('no data'));
+    }, () => {
+      if (--left === 0) reject(new Error('all failed'));
+    }));
+  });
 }
+let _vpnChecking = false, _vpnLastOk = 0, _vpnAttempts = 0;
+window._vpnLast = null;
+// force = true — проверить сейчас, игнорируя «свежий» результат (кнопка в меню)
+async function checkVpnAndWarn(force) {
+  if (_vpnChecking) return window._vpnLast;
+  if (!force && Date.now() - _vpnLastOk < 10 * 60 * 1000) return window._vpnLast;   // свежая проверка уже была
+  _vpnChecking = true;
+  try {
+    const tasks = VPN_APIS.map(a => httpGetJson(a.url, 6000).then(d => {
+      const r = a.map(d);
+      if (r) r.via = new URL(a.url).hostname;
+      return r;
+    }));
+    const res = await vpnFirstOk(tasks);
+    _vpnLastOk = Date.now();
+    _vpnAttempts = 0;
+    const org = String(res.org || '').trim();
+    window._vpnLast = { country: String(res.country).toUpperCase(), org, via: res.via, ts: Date.now() };
+    window._vpnLast.vpn = !!checkVpnData(res.country, org);   // покажет баннер, если VPN
+    return window._vpnLast;
+  } catch (e) {
+    console.warn('⚠️ VPN-проверка не удалась:', e && e.message);
+    // сети могло ещё не быть при запуске — пробуем ещё пару раз
+    if (!force && _vpnAttempts < 3) {
+      _vpnAttempts++;
+      setTimeout(() => checkVpnAndWarn(false), 4000 * _vpnAttempts);
+    }
+    return null;
+  } finally {
+    _vpnChecking = false;
+  }
+}
+// Вернулись в приложение, пока открыта карта — проверяем заново (VPN могли включить)
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && typeof currentTab !== 'undefined' && currentTab === 5) checkVpnAndWarn(false);
+});
+document.getElementById('btnCheckVpn')?.addEventListener('click', async () => {
+  document.getElementById('menu3')?.classList.remove('show');
+  vibro(10);
+  showToast('🛡 Проверяю VPN…');
+  const r = await checkVpnAndWarn(true);
+  if (!r) { showToast('⚠️ Не удалось проверить — сервисы не ответили'); return; }
+  const where = r.org ? r.country + ' · ' + r.org.slice(0, 40) : r.country + ' (' + r.via + ')';
+  showToast(r.vpn ? '⚠️ Похоже на VPN: ' + where : '✓ VPN не обнаружен: ' + where);
+});
 function loadLeaflet(callback) {
   if (window.L) { callback(); return; }
   
