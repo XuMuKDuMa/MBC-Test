@@ -13108,13 +13108,20 @@ setInterval(() => { if (checkAutoReset2()) render2(); }, 60 * 1000);
 renderRoute();
 updateActivitiesBadge();
 
-// ─── Принудительно открываем «Активности» при старте ───
+// ─── Стартовый экран: с 10:00 до 18:00 (и если есть интернет) — «Карта», иначе «Активности» ───
+const _startOnMap = (() => {
+  const h = new Date().getHours();
+  return h >= 10 && h < 18 && navigator.onLine !== false;
+})();
+
+// ─── Принудительно открываем стартовый экран ───
 function forceOpenActivitiesTab() {
+  if (currentTab === 5) return true;   // карта уже открыта — не откатываем
   const w = window.innerWidth;
   if (!w) return false;   // ещё не готово
   
   screensTrack.style.transition = 'none';
-  screensTrack.style.transform = `translateX(${-3 * w}px)`;
+  screensTrack.style.transform = `translateX(${-(_startOnMap ? 4 : 3) * w}px)`;
   document.body.classList.remove('tab-1', 'tab-2', 'tab-3', 'tab-4');
   document.body.classList.add('tab-4');
   updateBottomBarActive(4);
@@ -13135,6 +13142,14 @@ requestAnimationFrame(() => {
 // ─── На случай медленной загрузки — ещё раз через 100мс и 500мс ───
 setTimeout(forceOpenActivitiesTab, 100);
 setTimeout(forceOpenActivitiesTab, 500);
+
+// Рабочее время — после старта переключаемся на карту полноценно (инициализация карты, маркеры)
+if (_startOnMap) {
+  setTimeout(() => {
+    try { if (currentTab === 4) goToTab(5, false); }
+    catch (e) { console.warn('Старт на карте не удался:', e); }
+  }, 250);
+}
 
 /* ═══════════════════════════════════════════════
    МОДУЛЬ КАРТЫ (OpenStreetMap + Leaflet)
