@@ -6392,7 +6392,7 @@ body.dark .route-oos-chip.forced-in { color: #62d999; }
     <div class="emoji">💬</div>
     <h2 style="color:#6c5ce7;">Группы в MAX</h2>
     <p style="color:#666;margin-bottom:14px;font-size:13px;line-height:1.5;">
-      После копирования отчёта приложение откроет нужную группу — останется вставить текст и отправить. Вставь ссылку-приглашение на группу (https://max.ru/…). Пустое поле — ничего не открывать.
+      Если у группы есть ссылка-приглашение (https://max.ru/…), вставь её — после копирования отчёта откроется эта группа. Если ссылки нет, включи «Поделиться»: после копирования откроется меню, где выбираешь MAX и группу.
     </p>
     <div style="text-align:left;margin-bottom:12px;">
       <label style="display:block;font-size:12px;font-weight:600;color:#666;text-transform:uppercase;margin-bottom:4px;">Группа для утреннего отчёта</label>
@@ -6402,7 +6402,11 @@ body.dark .route-oos-chip.forced-in { color: #62d999; }
       <label style="display:block;font-size:12px;font-weight:600;color:#666;text-transform:uppercase;margin-bottom:4px;">Группа для вечернего отчёта</label>
       <input type="url" id="mgEvening" class="quick-input" placeholder="https://max.ru/join/…" autocomplete="off">
     </div>
+    <label style="display:flex;gap:8px;align-items:center;text-align:left;margin:0 0 14px;font-size:14px;cursor:pointer;">
+      <input type="checkbox" id="mgShare" style="width:18px;height:18px;"> Меню «Поделиться» после копирования (если нет ссылки)
+    </label>
     <button id="mgSave" style="width:100%;padding:13px;border:none;border-radius:10px;background:#6c5ce7;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">✓ Сохранить</button>
+    <button id="mgTestShare" style="width:100%;margin-top:8px;padding:12px;border:none;border-radius:10px;background:rgba(108,92,231,.12);color:#6c5ce7;font-size:14px;font-weight:600;cursor:pointer;">↗ Проверить «Поделиться»</button>
     <button id="mgTest" style="width:100%;margin-top:8px;padding:12px;border:none;border-radius:10px;background:rgba(108,92,231,.12);color:#6c5ce7;font-size:14px;font-weight:600;cursor:pointer;">↗ Проверить утреннюю ссылку</button>
     <button id="mgCancel" style="width:100%;margin-top:8px;padding:12px;border:none;border-radius:10px;background:#ecf0f1;color:#2c3e50;font-size:14px;font-weight:600;cursor:pointer;">Закрыть</button>
   </div>
@@ -9446,7 +9450,7 @@ btnReport1El.addEventListener('click', async () => {
     
     await copyText(text);
     showSuccessNotification('Отчёт готов', 'done');
-    openReportGroup('evening');
+    openReportGroup('evening', text);
   } catch (e) {
     showToast('❌ Ошибка: ' + e.message);
   } finally {
@@ -10510,12 +10514,24 @@ kmSchedule();
 function maxGroupsLoad() {
   try { return JSON.parse(localStorage.getItem('max_groups') || '{}') || {}; } catch (e) { return {}; }
 }
-// kind: 'morning' | 'evening'
-function openReportGroup(kind) {
+// kind: 'morning' | 'evening'; text — текст отчёта для меню «Поделиться»
+function openReportGroup(kind, text) {
   try {
-    const url = String(maxGroupsLoad()[kind] || '').trim();
-    if (!/^https?:\/\//i.test(url)) return;
-    setTimeout(() => { window.open(url, '_blank'); }, 700);   // дать показаться «скопировано»
+    const g = maxGroupsLoad();
+    const url = String(g[kind] || '').trim();
+    if (/^https?:\/\//i.test(url)) {
+      setTimeout(() => { window.open(url, '_blank'); }, 700);   // дать показаться «скопировано»
+      return;
+    }
+    if (g.share && text) {
+      if (typeof navigator.share !== 'function') {
+        showToast('ℹ️ «Поделиться» недоступно в этом приложении — вставь отчёт вручную');
+        return;
+      }
+      navigator.share({ text }).catch(e => {
+        if (e && e.name !== 'AbortError') showToast('ℹ️ «Поделиться» не открылось — отчёт скопирован, вставь вручную');
+      });
+    }
   } catch (e) { console.warn('openReportGroup', e); }
 }
 document.getElementById('btnOpenMaxGroups')?.addEventListener('click', () => {
@@ -10524,6 +10540,7 @@ document.getElementById('btnOpenMaxGroups')?.addEventListener('click', () => {
   const g = maxGroupsLoad();
   document.getElementById('mgMorning').value = g.morning || '';
   document.getElementById('mgEvening').value = g.evening || '';
+  document.getElementById('mgShare').checked = !!g.share;
   document.getElementById('maxGroupsModal').classList.add('show');
 });
 function mgClose() { document.getElementById('maxGroupsModal').classList.remove('show'); }
@@ -10532,7 +10549,8 @@ document.getElementById('mgSave')?.addEventListener('click', () => {
   const evening = document.getElementById('mgEvening').value.trim();
   const bad = [morning, evening].some(v => v && !/^https?:\/\//i.test(v));
   if (bad) { showToast('⚠️ Ссылка должна начинаться с https://'); return; }
-  try { localStorage.setItem('max_groups', JSON.stringify({ morning, evening })); } catch (e) {}
+  const share = document.getElementById('mgShare').checked;
+  try { localStorage.setItem('max_groups', JSON.stringify({ morning, evening, share })); } catch (e) {}
   mgClose();
   vibro(15);
   showToast('💬 Сохранено');
@@ -10541,6 +10559,12 @@ document.getElementById('mgTest')?.addEventListener('click', () => {
   const url = document.getElementById('mgMorning').value.trim();
   if (!/^https?:\/\//i.test(url)) { showToast('⚠️ Сначала вставь ссылку'); return; }
   window.open(url, '_blank');
+});
+document.getElementById('mgTestShare')?.addEventListener('click', () => {
+  if (typeof navigator.share !== 'function') { showToast('ℹ️ В этом приложении меню «Поделиться» недоступно'); return; }
+  navigator.share({ text: 'Тест: отчёт из приложения' }).catch(e => {
+    if (e && e.name !== 'AbortError') showToast('ℹ️ «Поделиться» не открылось: ' + (e.name || 'ошибка'));
+  });
 });
 document.getElementById('mgCancel')?.addEventListener('click', mgClose);
 document.getElementById('maxGroupsModal')?.addEventListener('click', (e) => { if (e.target.id === 'maxGroupsModal') mgClose(); });
@@ -12465,7 +12489,7 @@ app.appendChild(actionsWrap);
   await copyText(text);
   localStorage.setItem(MORNING_REPORT_SENT_KEY, new Date().toDateString());
   showSuccessNotification('Утренний отчёт готов', 'done');
-  openReportGroup('morning');
+  openReportGroup('morning', text);
 });
   }
 
@@ -12559,7 +12583,7 @@ saveState2(state2);
       localStorage.setItem(REPORT_SENT_KEY, new Date().toDateString());
       await copyText(text);
       showSuccessNotification('Отчёт готов', 'done');
-      openReportGroup('evening');
+      openReportGroup('evening', text);
      render2();          // перерисует МВС
      renderTotals3();    // пересчитает "Итоги" с новыми данными
     } catch (e) {
