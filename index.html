@@ -13397,31 +13397,64 @@ function vpnFirstOk(tasks) {
 }
 let _vpnChecking = false, _vpnLastOk = 0, _vpnAttempts = 0;
 window._vpnLast = null;
+window._vpnResults = [];
+
+// Опрашиваем все сервисы; после первого успешного ответа ждём остальных ещё 2.5 с
+function vpnCollect() {
+  return new Promise(resolve => {
+    const results = [];
+    let left = VPN_APIS.length, timer = null, done = false;
+    const finish = () => { if (done) return; done = true; clearTimeout(timer); resolve(results.slice()); };
+    VPN_APIS.forEach(a => {
+      const host = new URL(a.url).hostname.replace(/^(api|get)\./, '');
+      const js = !!a.jsonp;
+      (js ? httpJsonp(a.url, 9000) : httpGetJson(a.url, 9000)).then(d => {
+        const m = a.map(d);
+        if (m) {
+          results.push({ host, js, ok: true, country: String(m.country).toUpperCase(), org: String(m.org || '').trim() });
+          if (!timer) timer = setTimeout(finish, 2500);
+        } else {
+          results.push({ host, js, ok: false, err: 'пустой ответ' });
+        }
+      }, e => {
+        results.push({ host, js, ok: false, err: String((e && e.message) || e).slice(0, 24) });
+      }).then(() => { if (--left === 0) finish(); });
+    });
+  });
+}
+
 // force = true — проверить сейчас, игнорируя «свежий» результат (кнопка в меню)
 async function checkVpnAndWarn(force) {
   if (_vpnChecking) return window._vpnLast;
   if (!force && Date.now() - _vpnLastOk < 10 * 60 * 1000) return window._vpnLast;   // свежая проверка уже была
   _vpnChecking = true;
   try {
-    window._vpnErrors = [];
-    const tasks = VPN_APIS.map(a => {
-      const host = new URL(a.url).hostname.replace(/^(api|get)\./, '');
-      return (a.jsonp ? httpJsonp(a.url, 9000) : httpGetJson(a.url, 9000)).then(d => {
-        const r = a.map(d);
-        if (r) r.via = host;
-        else window._vpnErrors.push(host + ': пустой ответ');
-        return r;
-      }, (e) => {
-        window._vpnErrors.push(host + (a.jsonp ? '(js)' : '') + ': ' + String((e && e.message) || e).slice(0, 24));
-        throw e;
-      });
-    });
-    const res = await vpnFirstOk(tasks);
+    const results = await vpnCollect();
+    window._vpnResults = results;
+    window._vpnErrors = results.filter(r => !r.ok).map(r => r.host + (r.js ? '(js)' : '') + ': ' + r.err);
+    const okRes = results.filter(r => r.ok);
+    if (!okRes.length) throw new Error('no answers');
     _vpnLastOk = Date.now();
     _vpnAttempts = 0;
-    const org = String(res.org || '').trim();
-    window._vpnLast = { country: String(res.country).toUpperCase(), org, via: res.via, ts: Date.now() };
-    window._vpnLast.vpn = !!checkVpnData(res.country, org);   // покажет баннер, если VPN
+
+    // 1) страна / провайдер выдают VPN
+    let vpn = false, reason = '';
+    for (const r of okRes) {
+      if (checkVpnData(r.country, r.org)) { vpn = true; reason = 'страна или провайдер не из РФ'; break; }
+    }
+    // 2) косвенный признак: VPN режет сервисы определения IP.
+    //    Сеть работает (кто-то ответил), но ≥4 разных сервисов мгновенно отказали (не по таймауту).
+    if (!vpn) {
+      const okHosts = new Set(okRes.map(r => r.host));
+      const blocked = new Set(results.filter(r => !r.ok && r.err !== 'timeout' && !okHosts.has(r.host)).map(r => r.host));
+      if (blocked.size >= 4) {
+        vpn = true;
+        reason = 'сервисы определения IP недоступны (' + blocked.size + ' из ' + new Set(results.map(r => r.host)).size + ') — так бывает при VPN';
+        showVpnWarning();
+      }
+    }
+    const first = okRes[0];
+    window._vpnLast = { country: first.country, org: first.org, via: first.host, vpn, reason, ts: Date.now() };
     return window._vpnLast;
   } catch (e) {
     console.warn('⚠️ VPN-проверка не удалась:', e && e.message);
@@ -13473,21 +13506,19 @@ document.getElementById('btnCheckVpn')?.addEventListener('click', async () => {
     'Адрес страницы: ' + location.protocol + '//' + (location.host || '(пусто)'),
     'Сеть (onLine): ' + (navigator.onLine === false ? 'нет' : 'да')
   ];
-  const errs = (window._vpnErrors || []);
+  const res = window._vpnResults || [];
+  const oks = res.filter(x => x.ok).map(x => '✓ ' + x.host + (x.js ? '(js)' : '') + ': ' + x.country + (x.org ? ' · ' + x.org.slice(0, 28) : ''));
+  const bad = res.filter(x => !x.ok).map(x => '✗ ' + x.host + (x.js ? '(js)' : '') + ': ' + x.err);
   if (!r) {
-    vpnShowReport(['⚠️ Не удалось определить страну — ни один сервис не ответил.', '', 'Причины по сервисам:'].concat(errs.length ? errs : ['(нет данных)'], ['', ...env]));
+    vpnShowReport(['⚠️ Не удалось определить страну — ни один сервис не ответил.', ''].concat(bad.length ? bad : ['(нет данных)'], ['', ...env]));
     return;
   }
-  const where = r.org ? r.country + ' · ' + r.org.slice(0, 40) : r.country;
-  showToast(r.vpn ? '⚠️ Похоже на VPN: ' + where : '✓ VPN не обнаружен: ' + where);
+  showToast(r.vpn ? '⚠️ Похоже на VPN' : '✓ VPN не обнаружен: ' + r.country);
   vpnShowReport([
     r.vpn ? '⚠️ Похоже на VPN' : '✓ VPN не обнаружен',
-    'Страна: ' + r.country,
-    'Провайдер: ' + (r.org || '—'),
-    'Ответил сервис: ' + r.via,
-    errs.length ? '\nНе ответили:\n' + errs.join('\n') : '',
-    '', ...env
-  ]);
+    r.reason ? 'Причина: ' + r.reason : '',
+    '',
+    'Ответили:'].concat(oks.length ? oks : ['—'], ['', 'Не ответили:'], bad.length ? bad : ['—'], ['', ...env]));
 });
 function loadLeaflet(callback) {
   if (window.L) { callback(); return; }
