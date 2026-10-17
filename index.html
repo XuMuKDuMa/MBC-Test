@@ -10524,13 +10524,8 @@ function openReportGroup(kind, text) {
       return;
     }
     if (g.share && text) {
-      if (typeof navigator.share !== 'function') {
-        showToast('ℹ️ «Поделиться» недоступно в этом приложении — вставь отчёт вручную');
-        return;
-      }
-      navigator.share({ text }).catch(e => {
-        if (e && e.name !== 'AbortError') showToast('ℹ️ «Поделиться» не открылось — отчёт скопирован, вставь вручную');
-      });
+      if (typeof navigator.share !== 'function') return;   // в этом APK недоступно — молча остаёмся на копировании
+      navigator.share({ text }).catch(() => {});
     }
   } catch (e) { console.warn('openReportGroup', e); }
 }
