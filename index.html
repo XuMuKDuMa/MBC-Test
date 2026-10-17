@@ -6236,6 +6236,7 @@ body.dark .route-oos-chip.forced-in { color: #62d999; }
   <button id="btnOpenCityModal" style="color:#2980b9;">🏙 Мой город</button>
   <button id="btnOpenRoutePoints" style="color:#00897b;">🚗 Начальная и конечная точка</button>
   <button id="btnOpenFuel" style="color:#e67e22;">⛽ Расход бензина</button>
+  <button id="btnOpenMaxGroups" style="color:#6c5ce7;">💬 Группы в MAX</button>
   <button id="btnCheckVpn" style="color:#2980b9;">🛡 Проверить VPN</button>
   <button id="btnToggleTheme">🌙 Сменить тему</button>
   <button id="btnResetTotalsMenu">🗑 Сбросить итоги за месяц</button>
@@ -6383,6 +6384,27 @@ body.dark .route-oos-chip.forced-in { color: #62d999; }
     </div>
 
     <button id="cityModalCancel" style="width:100%;margin-top:8px;padding:12px;border:none;border-radius:10px;background:#ecf0f1;color:#2c3e50;font-size:14px;font-weight:600;cursor:pointer;">Закрыть</button>
+  </div>
+</div>
+<!-- Модалка групп в MAX -->
+<div class="modal-overlay" id="maxGroupsModal">
+  <div class="modal" style="max-width: 360px;">
+    <div class="emoji">💬</div>
+    <h2 style="color:#6c5ce7;">Группы в MAX</h2>
+    <p style="color:#666;margin-bottom:14px;font-size:13px;line-height:1.5;">
+      После копирования отчёта приложение откроет нужную группу — останется вставить текст и отправить. Вставь ссылку-приглашение на группу (https://max.ru/…). Пустое поле — ничего не открывать.
+    </p>
+    <div style="text-align:left;margin-bottom:12px;">
+      <label style="display:block;font-size:12px;font-weight:600;color:#666;text-transform:uppercase;margin-bottom:4px;">Группа для утреннего отчёта</label>
+      <input type="url" id="mgMorning" class="quick-input" placeholder="https://max.ru/join/…" autocomplete="off">
+    </div>
+    <div style="text-align:left;margin-bottom:14px;">
+      <label style="display:block;font-size:12px;font-weight:600;color:#666;text-transform:uppercase;margin-bottom:4px;">Группа для вечернего отчёта</label>
+      <input type="url" id="mgEvening" class="quick-input" placeholder="https://max.ru/join/…" autocomplete="off">
+    </div>
+    <button id="mgSave" style="width:100%;padding:13px;border:none;border-radius:10px;background:#6c5ce7;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">✓ Сохранить</button>
+    <button id="mgTest" style="width:100%;margin-top:8px;padding:12px;border:none;border-radius:10px;background:rgba(108,92,231,.12);color:#6c5ce7;font-size:14px;font-weight:600;cursor:pointer;">↗ Проверить утреннюю ссылку</button>
+    <button id="mgCancel" style="width:100%;margin-top:8px;padding:12px;border:none;border-radius:10px;background:#ecf0f1;color:#2c3e50;font-size:14px;font-weight:600;cursor:pointer;">Закрыть</button>
   </div>
 </div>
 <!-- Модалка расхода бензина -->
@@ -9424,6 +9446,7 @@ btnReport1El.addEventListener('click', async () => {
     
     await copyText(text);
     showSuccessNotification('Отчёт готов', 'done');
+    openReportGroup('evening');
   } catch (e) {
     showToast('❌ Ошибка: ' + e.message);
   } finally {
@@ -10479,6 +10502,48 @@ document.getElementById('routePointsModal')?.addEventListener('click', (e) => {
 })();
 kmSchedule();
 
+
+
+/* ═══════════════════════════════════════════════
+   MAX: открыть группу после копирования отчёта
+   ═══════════════════════════════════════════════ */
+function maxGroupsLoad() {
+  try { return JSON.parse(localStorage.getItem('max_groups') || '{}') || {}; } catch (e) { return {}; }
+}
+// kind: 'morning' | 'evening'
+function openReportGroup(kind) {
+  try {
+    const url = String(maxGroupsLoad()[kind] || '').trim();
+    if (!/^https?:\/\//i.test(url)) return;
+    setTimeout(() => { window.open(url, '_blank'); }, 700);   // дать показаться «скопировано»
+  } catch (e) { console.warn('openReportGroup', e); }
+}
+document.getElementById('btnOpenMaxGroups')?.addEventListener('click', () => {
+  document.getElementById('menu3')?.classList.remove('show');
+  vibro(10);
+  const g = maxGroupsLoad();
+  document.getElementById('mgMorning').value = g.morning || '';
+  document.getElementById('mgEvening').value = g.evening || '';
+  document.getElementById('maxGroupsModal').classList.add('show');
+});
+function mgClose() { document.getElementById('maxGroupsModal').classList.remove('show'); }
+document.getElementById('mgSave')?.addEventListener('click', () => {
+  const morning = document.getElementById('mgMorning').value.trim();
+  const evening = document.getElementById('mgEvening').value.trim();
+  const bad = [morning, evening].some(v => v && !/^https?:\/\//i.test(v));
+  if (bad) { showToast('⚠️ Ссылка должна начинаться с https://'); return; }
+  try { localStorage.setItem('max_groups', JSON.stringify({ morning, evening })); } catch (e) {}
+  mgClose();
+  vibro(15);
+  showToast('💬 Сохранено');
+});
+document.getElementById('mgTest')?.addEventListener('click', () => {
+  const url = document.getElementById('mgMorning').value.trim();
+  if (!/^https?:\/\//i.test(url)) { showToast('⚠️ Сначала вставь ссылку'); return; }
+  window.open(url, '_blank');
+});
+document.getElementById('mgCancel')?.addEventListener('click', mgClose);
+document.getElementById('maxGroupsModal')?.addEventListener('click', (e) => { if (e.target.id === 'maxGroupsModal') mgClose(); });
 
 /* ═══════════════════════════════════════════════
    БЕНЗИН: расход и цена, график затрат по дням
@@ -11946,7 +12011,7 @@ const BACKUP_KEYS = [
   'quick_report_v2', 'quick_report_last_day', 'quick_report_sent_today',
   'quick_report_reminder_shown', 'morning_report_sent_today',
   'monthly_report_last_shown', 'my_city', 'mvs_theme', 'map_geocache',
-  'route_points', 'km_history', 'fuel_settings'
+  'route_points', 'km_history', 'fuel_settings', 'max_groups'
 ];
 
 document.getElementById('btnToggleTheme').addEventListener('click', () => {
@@ -12400,6 +12465,7 @@ app.appendChild(actionsWrap);
   await copyText(text);
   localStorage.setItem(MORNING_REPORT_SENT_KEY, new Date().toDateString());
   showSuccessNotification('Утренний отчёт готов', 'done');
+  openReportGroup('morning');
 });
   }
 
@@ -12493,6 +12559,7 @@ saveState2(state2);
       localStorage.setItem(REPORT_SENT_KEY, new Date().toDateString());
       await copyText(text);
       showSuccessNotification('Отчёт готов', 'done');
+      openReportGroup('evening');
      render2();          // перерисует МВС
      renderTotals3();    // пересчитает "Итоги" с новыми данными
     } catch (e) {
