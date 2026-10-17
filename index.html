@@ -13439,18 +13439,55 @@ async function checkVpnAndWarn(force) {
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && typeof currentTab !== 'undefined' && currentTab === 5) checkVpnAndWarn(false);
 });
+// Окно с подробным отчётом проверки (можно сделать скриншот)
+function vpnShowReport(lines) {
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay show';
+  ov.style.zIndex = '99999';
+  const box = document.createElement('div');
+  box.className = 'modal';
+  box.style.maxWidth = '360px';
+  const h = document.createElement('h2');
+  h.style.color = '#2980b9';
+  h.textContent = '🛡 Проверка VPN';
+  const pre = document.createElement('div');
+  pre.style.cssText = 'text-align:left;font-size:12px;line-height:1.55;white-space:pre-wrap;word-break:break-word;margin:10px 0 14px;max-height:55vh;overflow:auto;';
+  pre.textContent = lines.join('\n');
+  const btn = document.createElement('button');
+  btn.textContent = 'Закрыть';
+  btn.style.cssText = 'width:100%;padding:12px;border:none;border-radius:10px;background:#ecf0f1;color:#2c3e50;font-size:14px;font-weight:600;cursor:pointer;';
+  btn.addEventListener('click', () => ov.remove());
+  box.appendChild(h); box.appendChild(pre); box.appendChild(btn);
+  ov.appendChild(box);
+  ov.addEventListener('click', (e) => { if (e.target === ov) ov.remove(); });
+  document.body.appendChild(ov);
+}
 document.getElementById('btnCheckVpn')?.addEventListener('click', async () => {
   document.getElementById('menu3')?.classList.remove('show');
   vibro(10);
   showToast('🛡 Проверяю VPN…');
   const r = await checkVpnAndWarn(true);
+  const ua = (navigator.userAgent || '');
+  const env = [
+    'Окружение: ' + (/\bwv\b|; wv\)|Version\/[\d.]+ Chrome/.test(ua) ? 'WebView (APK)' : 'браузер'),
+    'Адрес страницы: ' + location.protocol + '//' + (location.host || '(пусто)'),
+    'Сеть (onLine): ' + (navigator.onLine === false ? 'нет' : 'да')
+  ];
+  const errs = (window._vpnErrors || []);
   if (!r) {
-    const errs = (window._vpnErrors || []).slice(0, 4).join('; ');
-    showToast('⚠️ Не удалось проверить. ' + (errs || 'нет ответа') + (navigator.onLine === false ? ' · нет сети' : ''));
+    vpnShowReport(['⚠️ Не удалось определить страну — ни один сервис не ответил.', '', 'Причины по сервисам:'].concat(errs.length ? errs : ['(нет данных)'], ['', ...env]));
     return;
   }
-  const where = r.org ? r.country + ' · ' + r.org.slice(0, 40) : r.country + ' (' + r.via + ')';
+  const where = r.org ? r.country + ' · ' + r.org.slice(0, 40) : r.country;
   showToast(r.vpn ? '⚠️ Похоже на VPN: ' + where : '✓ VPN не обнаружен: ' + where);
+  vpnShowReport([
+    r.vpn ? '⚠️ Похоже на VPN' : '✓ VPN не обнаружен',
+    'Страна: ' + r.country,
+    'Провайдер: ' + (r.org || '—'),
+    'Ответил сервис: ' + r.via,
+    errs.length ? '\nНе ответили:\n' + errs.join('\n') : '',
+    '', ...env
+  ]);
 });
 function loadLeaflet(callback) {
   if (window.L) { callback(); return; }
