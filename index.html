@@ -6109,6 +6109,16 @@ body.dark .ios-banner { --ib-bg: rgba(44,44,46,.94); --ib-fg: #fff; --ib-sub: rg
 .ib-body { flex: 1; min-width: 0; }
 .ib-title { font-size: 15px; font-weight: 600; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
 .ib-sub { font-size: 13px; line-height: 1.25; margin-top: 2px; color: var(--ib-sub); }
+.ios-banner.has-actions { align-items: flex-start; }
+.ib-actions { display: flex; gap: 8px; margin-top: 10px; }
+.ib-btn {
+  flex: 1; min-height: 36px; padding: 8px 14px; border: none; border-radius: 12px;
+  background: rgba(120,120,128,.2); color: var(--ib-fg);
+  font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+  -webkit-tap-highlight-color: transparent; transition: transform .12s;
+}
+.ib-btn.primary { background: #0a84ff; color: #fff; }
+.ib-btn:active { transform: scale(.95); }
 .ib-time { align-self: flex-start; font-size: 12px; color: var(--ib-sub); margin-top: 1px; }
 </style>
 <style id="route-pending-style">
@@ -7266,17 +7276,38 @@ function iosBanner(o) {
   wrap._lastTitle = title; wrap._lastAt = Date.now();
 
   const el = document.createElement('div');
-  el.className = 'ios-banner' + (o.kind ? ' k-' + o.kind : '');
+  const hasActions = !!(o.actions && o.actions.length);
+  el.className = 'ios-banner' + (o.kind ? ' k-' + o.kind : '') + (hasActions ? ' has-actions' : '');
   el.innerHTML = '<div class="ib-icon"></div><div class="ib-body"><div class="ib-title"></div><div class="ib-sub"></div></div><div class="ib-time">сейчас</div>';
   el.querySelector('.ib-icon').textContent = o.icon || '🔔';
   el.querySelector('.ib-title').textContent = title;
   const subEl = el.querySelector('.ib-sub');
   if (o.sub) subEl.textContent = o.sub; else subEl.remove();
+  if (hasActions) {
+    const row = document.createElement('div');
+    row.className = 'ib-actions';
+    o.actions.forEach(a => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'ib-btn' + (a.primary ? ' primary' : '');
+      b.textContent = a.label;
+      b.addEventListener('click', (e) => { e.stopPropagation(); dismiss(); try { a.fn && a.fn(); } catch (err) { console.warn(err); } });
+      b.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+      row.appendChild(b);
+    });
+    el.querySelector('.ib-body').appendChild(row);
+  }
+  el._sticky = !!o.sticky;
   wrap.insertBefore(el, wrap.firstChild);                    // новое — сверху, как в iOS
-  while (wrap.children.length > 3) wrap.lastElementChild.remove();
+  // не больше 3 баннеров; «липкие» напоминания не выкидываем
+  let extra = wrap.children.length - 3;
+  for (let i = wrap.children.length - 1; i >= 0 && extra > 0; i--) {
+    const c = wrap.children[i];
+    if (!c._sticky) { c.remove(); extra--; }
+  }
   requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
 
-  let timer = setTimeout(dismiss, o.duration || 3200);
+  let timer = o.sticky ? null : setTimeout(dismiss, o.duration || 3200);
   function dismiss() {
     if (el._gone) return;
     el._gone = true; clearTimeout(timer);
@@ -7289,10 +7320,11 @@ function iosBanner(o) {
   el.addEventListener('touchmove', e => { if (y0 == null) return; dy = Math.min(0, e.touches[0].clientY - y0); el.style.transform = 'translateY(' + dy + 'px)'; }, { passive: true });
   el.addEventListener('touchend', () => {
     el.style.transition = ''; el.style.transform = '';
-    if (dy < -24) dismiss(); else timer = setTimeout(dismiss, 1800);
+    if (dy < -24) dismiss(); else if (!o.sticky) timer = setTimeout(dismiss, 1800);
     y0 = null;
   });
-  el.addEventListener('click', dismiss);
+  if (!o.sticky) el.addEventListener('click', dismiss);
+  return { el, dismiss };
 }
 
 // Обычные сообщения: эмодзи в начале текста становится иконкой баннера
@@ -7359,7 +7391,7 @@ function applyCity(addr) {
 
 let _successTimeout = null;
 let _successHideTimeout = null;
-function showSuccessNotification(text, kind) {
+function showSuccessNotification(text, kind, sub) {
   const map = {
     done:    { icon: '✓', k: 'ok' },
     wait:    { icon: '⏱', k: 'info' },
@@ -7367,7 +7399,7 @@ function showSuccessNotification(text, kind) {
     ndz:     { icon: '!', k: 'error' }
   };
   const m = map[kind] || map.done;
-  iosBanner({ title: text || 'Готово', icon: m.icon, kind: m.k, duration: 2800 });
+  iosBanner({ title: text || 'Готово', sub: sub || '', icon: m.icon, kind: m.k, duration: sub ? 3600 : 2800 });
 }
 
 function isHoliday(date) {
@@ -8332,6 +8364,15 @@ startBtn.addEventListener('click', (e) => {
   item.meetStart = item.startedAt;   // время начала — для учёта «не в слот»
   saveRouteState(routeState);
   vibro(20);
+  {
+    const d = new Date(item.startedAt);
+    const hh = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    iosBanner({
+      title: 'Встреча началась',
+      sub: ((item.addr || '').trim() || 'Адрес не указан') + ' · с ' + hh,
+      icon: '▶', kind: 'info', duration: 3600
+    });
+  }
   renderRoute();
   updateActivitiesBadge();
   _mapHash = '';
@@ -8469,6 +8510,7 @@ function resetMtypeForCategory(item) {
 
 // ─── Завершить встречу одной кнопкой (то же, что «Завершить» в меню статуса) ───
 function quickFinishMeeting(item) {
+  const _began = item.startedAt;
   item.status = 'done';
   item.startedAt = null;
   syncCardCredit(item);
@@ -8479,7 +8521,12 @@ function quickFinishMeeting(item) {
   _mapHash = '';
   if (map) renderMapMarkers();
   vibro(15);
-  showSuccessNotification('Встреча проведена' + creditUpLabel(item.credited), 'done');
+  let _dur = '';
+  if (_began) {
+    const mins = Math.max(1, Math.round((Date.now() - _began) / 60000));
+    _dur = 'Длилась ' + (mins < 60 ? mins + ' мин' : Math.floor(mins / 60) + ' ч ' + String(mins % 60).padStart(2, '0') + ' мин');
+  }
+  showSuccessNotification('Встреча проведена' + creditUpLabel(item.credited), 'done', _dur);
   noTypeHint(item);
 }
 
@@ -13131,11 +13178,33 @@ function checkReminder() {
     const quickModal = document.getElementById('quickReportModal');
     if (quickModal && quickModal.classList.contains('show')) return;
 
-    const modal = document.getElementById('reminderModal');
-    modal.classList.add('show');
-    vibro([200, 100, 200, 100, 200]);
+    showReportReminder('evening');
   }
 }
+
+/* ─── Напоминания об отчётах: баннеры с кнопками ─── */
+const _remBanner = {}, _remLast = {};
+function showReportReminder(kind) {
+  const cfg = {
+    morning: { icon: '⏰', k: 'warn', title: 'Утренний отчёт', sub: 'Отправь отчёт МВС руководителю до 9:00',
+               label: 'Утр.отчёт', fn: () => document.getElementById('btnMorningReport2')?.click() },
+    evening: { icon: '📋', k: 'info', title: 'Отчёт за день', sub: 'Отправь отчёт руководителю, когда будешь готов',
+               label: 'Открыть', fn: () => goToTab(2) },
+    quick:   { icon: '📝', k: 'info', title: 'Предварительный отчёт', sub: 'Заполни план и встречи на день',
+               label: 'Заполнить', fn: () => openQuickReport() }
+  }[kind];
+  if (!cfg) return;
+  const prev = _remBanner[kind];
+  if (prev && prev.el && prev.el.isConnected && !prev.el._gone) return;       // уже на экране
+  if (Date.now() - (_remLast[kind] || 0) < 15 * 60000) return;                // не чаще раза в 15 минут
+  _remLast[kind] = Date.now();
+  vibro([300, 150, 300, 150, 300]);
+  _remBanner[kind] = iosBanner({
+    title: cfg.title, sub: cfg.sub, icon: cfg.icon, kind: cfg.k, sticky: true,
+    actions: [{ label: cfg.label, primary: true, fn: cfg.fn }, { label: 'Позже' }]
+  });
+}
+
 /* ─── Будильник предварительного отчёта (13:00) ─── */
 let _quickReminderInterval = null;
 
@@ -13143,11 +13212,8 @@ function showQuickReportReminder() {
   const modal = document.getElementById('quickReportModal');
   if (!modal || modal.classList.contains('show')) return;
 
-  // открываем модалку предварительного отчёта
-  openQuickReport();
-
-  // вибрируем 3 раза
-  vibro([300, 150, 300, 150, 300]);
+  // показываем баннер-напоминание с кнопкой «Заполнить»
+  showReportReminder('quick');
 
   // ставим флаг, что сегодня уже показывали
   localStorage.setItem(QUICK_REPORT_REMIND_KEY, new Date().toDateString());
@@ -13188,9 +13254,7 @@ function checkMorningReportReminder() {
   const shownToday = localStorage.getItem(MORNING_REPORT_SENT_KEY + '_shown') === now.toDateString();
   if (shownToday) return;
 
-  const modal = document.getElementById('morningReportModal');
-  if (modal) modal.classList.add('show');
-  vibro([300, 150, 300, 150, 300]);
+  showReportReminder('morning');
 
   localStorage.setItem(MORNING_REPORT_SENT_KEY + '_shown', new Date().toDateString());
 }
