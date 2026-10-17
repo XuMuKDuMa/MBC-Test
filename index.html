@@ -6282,6 +6282,7 @@ body.dark .ios-banner { --ib-bg: rgba(44,44,46,.94); --ib-fg: #fff; --ib-sub: rg
   <button id="btnOpenRoutePoints" style="color:#00897b;">🚗 Начальная и конечная точка</button>
   <button id="btnOpenFuel" style="color:#e67e22;">⛽ Расход бензина</button>
   <button id="btnOpenMaxGroups" style="color:#6c5ce7;">💬 Группы в MAX</button>
+  <button id="btnTestNotif" style="color:#16a085;">🔔 Проверить уведомление</button>
   <button id="btnCheckVpn" style="color:#2980b9;">🛡 Проверить VPN</button>
   <button id="btnToggleTheme">🌙 Сменить тему</button>
   <button id="btnResetTotalsMenu">🗑 Сбросить итоги за месяц</button>
@@ -10577,6 +10578,58 @@ kmSchedule();
 
 
 
+
+/* ═══════════════════════════════════════════════
+   Проверка системных уведомлений (шторка) в APK
+   ═══════════════════════════════════════════════ */
+document.getElementById('btnTestNotif')?.addEventListener('click', async () => {
+  document.getElementById('menu3')?.classList.remove('show');
+  vibro(10);
+  const out = [];
+  const hasApi = ('Notification' in window);
+  out.push('Notification API: ' + (hasApi ? 'есть' : 'НЕТ'));
+  out.push('Service Worker: ' + (('serviceWorker' in navigator) ? 'есть' : 'НЕТ'));
+  if (!hasApi) {
+    out.push('', 'Итог: в этой оболочке системные уведомления недоступны.');
+    vpnShowReport(out, '🔔 Проверка уведомлений');
+    return;
+  }
+  out.push('Разрешение до запроса: ' + Notification.permission);
+  let perm = Notification.permission;
+  if (perm === 'default') {
+    try { perm = await Notification.requestPermission(); } catch (e) { out.push('Запрос разрешения: ошибка ' + (e && e.name)); }
+  }
+  out.push('Разрешение сейчас: ' + perm);
+  if (perm !== 'granted') {
+    out.push('', 'Итог: разрешения нет. Проверь настройки уведомлений приложения в Android.');
+    vpnShowReport(out, '🔔 Проверка уведомлений');
+    return;
+  }
+  const opts = { body: 'Если ты видишь это в шторке — уведомления работают', tag: 'mvs-test', requireInteraction: true };
+  let shown = false;
+  // способ 1: через Service Worker (так работает Android)
+  try {
+    if ('serviceWorker' in navigator) {
+      const reg = await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise((_, rej) => setTimeout(() => rej(new Error('SW не готов')), 3000))
+      ]);
+      await reg.showNotification('МВС отчёты', opts);
+      out.push('Через Service Worker: отправлено ✓');
+      shown = true;
+    }
+  } catch (e) { out.push('Через Service Worker: ошибка — ' + (e && e.message || e)); }
+  // способ 2: напрямую
+  if (!shown) {
+    try { new Notification('МВС отчёты', opts); out.push('Напрямую: отправлено ✓'); shown = true; }
+    catch (e) { out.push('Напрямую: ошибка — ' + (e && e.message || e)); }
+  }
+  out.push('', shown
+    ? 'Итог: команда отправлена. Посмотри шторку: если уведомление появилось — работает, и можно делать «встреча в работе» в шторке. Если шторка пустая — оболочка уведомления не пропускает.'
+    : 'Итог: показать уведомление не удалось.');
+  vpnShowReport(out, '🔔 Проверка уведомлений');
+});
+
 /* ═══════════════════════════════════════════════
    MAX: открыть группу после копирования отчёта
    ═══════════════════════════════════════════════ */
@@ -13628,7 +13681,7 @@ document.addEventListener('visibilitychange', () => {
   if (!document.hidden && typeof currentTab !== 'undefined' && currentTab === 5) checkVpnAndWarn(false);
 });
 // Окно с подробным отчётом проверки (можно сделать скриншот)
-function vpnShowReport(lines) {
+function vpnShowReport(lines, title) {
   const ov = document.createElement('div');
   ov.className = 'modal-overlay show';
   ov.style.zIndex = '99999';
@@ -13637,7 +13690,7 @@ function vpnShowReport(lines) {
   box.style.maxWidth = '360px';
   const h = document.createElement('h2');
   h.style.color = '#2980b9';
-  h.textContent = '🛡 Проверка VPN';
+  h.textContent = title || '🛡 Проверка VPN';
   const pre = document.createElement('div');
   pre.style.cssText = 'text-align:left;font-size:12px;line-height:1.55;white-space:pre-wrap;word-break:break-word;margin:10px 0 14px;max-height:55vh;overflow:auto;';
   pre.textContent = lines.join('\n');
