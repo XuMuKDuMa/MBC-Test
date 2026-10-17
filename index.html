@@ -10571,10 +10571,12 @@ document.getElementById('routePointsModal')?.addEventListener('click', (e) => {
   renderRoute = function () {
     const r = orig.apply(this, arguments);
     try { kmSchedule(); } catch (e) {}
+    try { liveNotifSync(); } catch (e) {}
     return r;
   };
 })();
 kmSchedule();
+setTimeout(() => { try { liveNotifSync(); } catch (e) {} }, 1500);   // после запуска сверить уведомление
 
 
 
@@ -10629,6 +10631,58 @@ document.getElementById('btnTestNotif')?.addEventListener('click', async () => {
     : 'Итог: показать уведомление не удалось.');
   vpnShowReport(out, '🔔 Проверка уведомлений');
 });
+
+
+/* ═══════════════════════════════════════════════
+   Уведомление в шторке: «Встреча в работе» (пока нажато «Начать» и не «Завершить»)
+   ═══════════════════════════════════════════════ */
+let _liveKey = null;
+function liveNotifOk() {
+  return ('Notification' in window) && Notification.permission === 'granted';
+}
+async function liveNotifHide() {
+  try { if (window._liveN && window._liveN.close) window._liveN.close(); } catch (e) {}
+  window._liveN = null;
+  try {
+    if ('serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg && reg.getNotifications) {
+        (await reg.getNotifications({ tag: 'mvs-live' })).forEach(n => n.close());
+      }
+    }
+  } catch (e) {}
+}
+async function liveNotifShow(item) {
+  if (!liveNotifOk()) return;
+  const t = new Date(item.startedAt);
+  const hh = String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0');
+  const opts = {
+    body: (item.addr && item.addr.trim() ? item.addr.trim() : 'Адрес не указан') + '\nс ' + hh + ' · тап — вернуться в приложение',
+    tag: 'mvs-live',
+    requireInteraction: true,
+    silent: true
+  };
+  try { window._liveN = new Notification('Встреча в работе', opts); return; } catch (e) {}
+  try {
+    if ('serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.ready;
+      await reg.showNotification('Встреча в работе', opts);
+    }
+  } catch (e) { console.warn('liveNotif', e); }
+}
+// Сверяем уведомление с состоянием маршрута (вызывается после каждой перерисовки)
+function liveNotifSync() {
+  try {
+    let live = null;
+    ROUTE_TIMES.forEach(t => (routeState.lists[t.id] || []).forEach(it => {
+      if (it && it.startedAt && (!live || it.startedAt < live.startedAt)) live = it;
+    }));
+    const key = live ? live.startedAt + '|' + (live.addr || '') : null;
+    if (key === _liveKey) return;
+    _liveKey = key;
+    if (live) liveNotifShow(live); else liveNotifHide();
+  } catch (e) { console.warn('liveNotifSync', e); }
+}
 
 /* ═══════════════════════════════════════════════
    MAX: открыть группу после копирования отчёта
