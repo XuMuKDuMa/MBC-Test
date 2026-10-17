@@ -10607,22 +10607,22 @@ document.getElementById('btnTestNotif')?.addEventListener('click', async () => {
   }
   const opts = { body: 'Если ты видишь это в шторке — уведомления работают', tag: 'mvs-test', requireInteraction: true };
   let shown = false;
-  // способ 1: через Service Worker (так работает Android)
-  try {
-    if ('serviceWorker' in navigator) {
-      const reg = await Promise.race([
-        navigator.serviceWorker.ready,
-        new Promise((_, rej) => setTimeout(() => rej(new Error('SW не готов')), 3000))
-      ]);
-      await reg.showNotification('МВС отчёты', opts);
-      out.push('Через Service Worker: отправлено ✓');
-      shown = true;
-    }
-  } catch (e) { out.push('Через Service Worker: ошибка — ' + (e && e.message || e)); }
-  // способ 2: напрямую
+  // способ 1: напрямую — сборщик превращает new Notification() в системное уведомление
+  try { new Notification('МВС отчёты', opts); out.push('Напрямую (new Notification): отправлено ✓'); shown = true; }
+  catch (e) { out.push('Напрямую: ошибка — ' + (e && e.message || e)); }
+  // способ 2: через Service Worker (запасной)
   if (!shown) {
-    try { new Notification('МВС отчёты', opts); out.push('Напрямую: отправлено ✓'); shown = true; }
-    catch (e) { out.push('Напрямую: ошибка — ' + (e && e.message || e)); }
+    try {
+      if ('serviceWorker' in navigator) {
+        const reg = await Promise.race([
+          navigator.serviceWorker.ready,
+          new Promise((_, rej) => setTimeout(() => rej(new Error('SW не готов')), 3000))
+        ]);
+        await reg.showNotification('МВС отчёты', opts);
+        out.push('Через Service Worker: отправлено ✓');
+        shown = true;
+      }
+    } catch (e) { out.push('Через Service Worker: ошибка — ' + (e && e.message || e)); }
   }
   out.push('', shown
     ? 'Итог: команда отправлена. Посмотри шторку: если уведомление появилось — работает, и можно делать «встреча в работе» в шторке. Если шторка пустая — оболочка уведомления не пропускает.'
