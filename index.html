@@ -6001,6 +6001,60 @@ body.dark .meet-accordion > .section-title.sec-meet {
 }
 .meet-accordion > .section-body { margin-top: 10px; }
 </style>
+<style id="route-status-buttons">
+/* ─── «Ждёт» и «НДЗ»: карточка нейтральная, цвет и пульсация — только у кнопки статуса ─── */
+#screen4 .route-card.status-wait, #screen4 .route-card.status-ndz {
+  background: linear-gradient(90deg, rgba(255,255,255,.95), rgba(255,255,255,.75)) !important;
+  box-shadow: inset 6px 0 0 #cfd8dc, 0 2px 6px rgba(0,0,0,.08) !important;
+}
+body.dark #screen4 .route-card.status-wait, body.dark #screen4 .route-card.status-ndz {
+  background: linear-gradient(90deg, rgba(255,255,255,.10), rgba(255,255,255,.05)) !important;
+  box-shadow: inset 6px 0 0 #4a5a6a, 0 2px 6px rgba(0,0,0,.25) !important;
+}
+#screen4 .route-card.status-wait .route-addr-input, #screen4 .route-card.status-wait .route-note-input,
+#screen4 .route-card.status-ndz .route-addr-input,  #screen4 .route-card.status-ndz .route-note-input {
+  background: rgba(0,0,0,.04) !important; border-color: rgba(0,0,0,.12) !important;
+  color: #1f2d3a !important; text-shadow: none !important; font-weight: 700;
+}
+#screen4 .route-card.status-wait .route-addr-input::placeholder, #screen4 .route-card.status-wait .route-note-input::placeholder,
+#screen4 .route-card.status-ndz .route-addr-input::placeholder,  #screen4 .route-card.status-ndz .route-note-input::placeholder { color: rgba(0,0,0,.4) !important; }
+body.dark #screen4 .route-card.status-wait .route-addr-input, body.dark #screen4 .route-card.status-wait .route-note-input,
+body.dark #screen4 .route-card.status-ndz .route-addr-input,  body.dark #screen4 .route-card.status-ndz .route-note-input {
+  background: rgba(255,255,255,.08) !important; border-color: rgba(255,255,255,.16) !important; color: #e8eef5 !important;
+}
+body.dark #screen4 .route-card.status-wait .route-addr-input::placeholder, body.dark #screen4 .route-card.status-wait .route-note-input::placeholder,
+body.dark #screen4 .route-card.status-ndz .route-addr-input::placeholder,  body.dark #screen4 .route-card.status-ndz .route-note-input::placeholder { color: rgba(255,255,255,.45) !important; }
+
+/* Кнопка статуса — в стиле переключателя B2C / B2B, пульсирует */
+#screen4 .route-status-line .status-badge.status-wait,
+#screen4 .route-status-line .status-badge.status-ndz {
+  padding: 8px 14px; border-radius: 10px; color: #fff; font-size: 13px; letter-spacing: .3px;
+}
+#screen4 .route-status-line .status-badge.status-wait { background: linear-gradient(135deg, #3498db, #2471a3); animation: sbPulseBlue 1.8s ease-in-out infinite; }
+#screen4 .route-status-line .status-badge.status-ndz  { background: linear-gradient(135deg, #ec7063, #c0392b); animation: sbPulseRed 1.8s ease-in-out infinite; }
+#screen4 .route-status-line .status-badge.status-wait .sb-dot,
+#screen4 .route-status-line .status-badge.status-ndz .sb-dot { display: none; }
+#screen4 .route-status-line .status-badge.status-wait .sb-chev,
+#screen4 .route-status-line .status-badge.status-ndz .sb-chev { color: #fff; opacity: .85; }
+@keyframes sbPulseBlue {
+  0%, 100% { box-shadow: 0 2px 6px rgba(52,152,219,.4), 0 0 0 0 rgba(52,152,219,.55); }
+  50%      { box-shadow: 0 2px 6px rgba(52,152,219,.4), 0 0 0 7px rgba(52,152,219,0); }
+}
+@keyframes sbPulseRed {
+  0%, 100% { box-shadow: 0 2px 6px rgba(231,76,60,.45), 0 0 0 0 rgba(231,76,60,.6); }
+  50%      { box-shadow: 0 2px 6px rgba(231,76,60,.45), 0 0 0 7px rgba(231,76,60,0); }
+}
+/* Метка «не в слот» на готовой встрече */
+.route-oos-chip {
+  border: none; border-radius: 8px; padding: 5px 9px; margin-left: 8px;
+  background: rgba(243,156,18,.18); color: #b9770e;
+  font-family: inherit; font-size: 11px; font-weight: 800; white-space: nowrap; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.route-oos-chip.forced-in { background: rgba(39,174,96,.16); color: #1e8449; }
+body.dark .route-oos-chip { color: #f5b041; }
+body.dark .route-oos-chip.forced-in { color: #62d999; }
+</style>
 <style id="route-pending-style">
 .route-pending-block { margin: 8px 8px 10px; }
 #screen4 .slot-grid + .route-pending-block { margin-top: 12px; }
@@ -8010,6 +8064,23 @@ statusLine.className = 'route-status-line';
 
 // Бейдж статуса — идёт после подсказки
 statusLine.appendChild(statusBadge);
+if (item.status === 'done' && (slotAutoOut(item, timeId) || item.slotForce)) {
+  const eff = isOutOfSlot(item, timeId);
+  const chip = document.createElement('button');
+  chip.type = 'button';
+  chip.className = 'route-oos-chip' + (eff ? '' : ' forced-in');
+  chip.textContent = eff ? '⏱ не в слот' : '✓ в слот';
+  chip.title = 'Тап — изменить';
+  chip.addEventListener('click', (e) => {
+    e.stopPropagation();
+    item.slotForce = eff ? 'in' : null;
+    saveRouteState(routeState);
+    vibro(10);
+    renderRoute();
+  });
+  chip.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+  statusLine.appendChild(chip);
+}
 
 // ─── Встреча в работе: только кнопка «Завершить», без отдельного индикатора ───
 if (item.startedAt) {
@@ -8151,6 +8222,7 @@ startBtn.addEventListener('click', (e) => {
   
   // ─── Начинаем встречу ───
   item.startedAt = Date.now();
+  item.meetStart = item.startedAt;   // время начала — для учёта «не в слот»
   saveRouteState(routeState);
   vibro(20);
   renderRoute();
@@ -8218,6 +8290,28 @@ function creditMeetingType(mid, delta) {
   }
   setCount1(mid, getCount1(mid) + delta);
 }
+// ─── Встреча проведена «не в слот»: время старта вне окна слота ±15 минут ───
+// Слот 10–12 → засчитывается с 9:45 до 12:45
+function slotWindowOf(timeId, refMs) {
+  const m = /^t(\d+)_(\d+)$/.exec(timeId || '');
+  if (!m) return null;
+  const a = new Date(refMs); a.setHours(parseInt(m[1], 10), 0, 0, 0);
+  const b = new Date(refMs); b.setHours(parseInt(m[2], 10), 0, 0, 0);
+  return [a.getTime() - 15 * 60000, b.getTime() + 15 * 60000];
+}
+// Автоопределение (без ручной правки)
+function slotAutoOut(item, timeId) {
+  if (!item || item.status !== 'done') return false;
+  const when = item.meetStart || item.doneAt;   // время «Начать», иначе время «Готово»
+  if (!when) return false;                       // время неизвестно — считаем «в слот»
+  const w = slotWindowOf(timeId, when);
+  return !!w && (when < w[0] || when > w[1]);
+}
+function isOutOfSlot(item, timeId) {
+  if (!item || item.status !== 'done') return false;
+  if (item.slotForce === 'in') return false;     // поправлено вручную
+  return slotAutoOut(item, timeId);
+}
 // Тип по умолчанию: первый в категории (B2C → ФД обычная, B2B → РКО)
 function mtypeLabelOf(item) {
   const id = effectiveMtype(item);
@@ -8235,7 +8329,11 @@ function syncCardCredit(item) {
   const desired = (item.status === 'done') ? effectiveMtype(item) : null;
   // Время закрытия встречи — нужно для порядка точек в километраже
   if (item.status === 'done') { if (!item.doneAt) item.doneAt = Date.now(); }
-  else if (item.doneAt) item.doneAt = null;
+  else if (item.doneAt) {
+    item.doneAt = null;
+    item.slotForce = null;
+    if (!item.startedAt) item.meetStart = null;   // встречу «разоткрыли» — время старта устарело
+  }
   if (item.credited && item.credited !== desired) {
     creditMeetingType(item.credited, -1);
     item.credited = null;
@@ -9733,6 +9831,8 @@ let b2cTotal = 0;
 let b2cDone = 0;
 let b2bFromCards = 0;
 let b2bDone = 0;
+let outB2C = 0;      // B2C-встречи, проведённые не в слот
+let outAll = 0;      // все встречи не в слот (B2C + B2B)
 
 if (typeof ROUTE_TIMES !== 'undefined' &&
     typeof routeState !== 'undefined' &&
@@ -9745,12 +9845,15 @@ if (typeof ROUTE_TIMES !== 'undefined' &&
 
       const cat = item.category || 'b2c';
 
+      const oos = isOutOfSlot(item, t.id);
+      if (oos) outAll++;
       if (cat === 'b2b') {
         b2bFromCards++;
         if (item.status === 'done') b2bDone++;
       } else {
         b2cTotal++;
         if (item.status === 'done') b2cDone++;
+        if (oos) outB2C++;
       }
     });
   });
@@ -9765,6 +9868,9 @@ const b2bTotalFinal = b2bManual !== null ? b2bManual : b2bFromCards;
 
 const b2cLine = `${b2cTotal}/${b2cDone}`;
 const b2bLine = `${b2bTotalFinal}/${b2bDone}`;
+// «B2C слот»: встречи, проведённые не в слот, в слотовый показатель не входят
+const b2cSlotLine = `${b2cTotal - outB2C}/${b2cDone - outB2C}`;
+const outNote = outAll > 0 ? '\nВстреч не в слот: ' + outAll : '';
   return `‼️‼️‼️
 Новый формат ✅
 
@@ -9786,7 +9892,7 @@ const b2bLine = `${b2bTotalFinal}/${b2bDone}`;
 
 B2B tr ЕКП: ${b2bLine}
 B2C tr ЕКП: ${b2cLine}
-B2C слот ЕКП: ${b2cLine}
+B2C слот ЕКП: ${b2cSlotLine}${outNote}
 
 ФД 0.35: ${fd035}
 ФД 0.2: ${fd02}
@@ -13250,8 +13356,23 @@ const VPN_APIS = [
   { url: 'https://ipinfo.io/json',                 map: d => d && d.country ? { country: d.country, org: d.org || '' } : null },
   { url: 'https://api.country.is/',                map: d => d && d.country ? { country: d.country, org: '' } : null },
   { url: 'https://get.geojs.io/v1/ip/geo.json',    map: d => d && d.country_code ? { country: d.country_code, org: d.organization_name || '' } : null },
-  { url: 'https://api.ip.sb/geoip',                map: d => d && d.country_code ? { country: d.country_code, org: (d.isp || '') + ' ' + (d.organization || '') } : null }
+  { url: 'https://api.ip.sb/geoip',                map: d => d && d.country_code ? { country: d.country_code, org: (d.isp || '') + ' ' + (d.organization || '') } : null },
+  // JSONP — запрос через <script>, не зависит от CORS (запасной путь для WebView в APK)
+  { url: 'https://get.geojs.io/v1/ip/geo.js', jsonp: true, map: d => d && d.country_code ? { country: d.country_code, org: d.organization_name || '' } : null },
+  { url: 'https://ipapi.co/jsonp/',           jsonp: true, map: d => d && d.country_code ? { country: d.country_code, org: (d.org || '') + ' ' + (d.asn || '') } : null }
 ];
+function httpJsonp(url, timeout) {
+  return new Promise((resolve, reject) => {
+    const name = '_vpncb' + Math.random().toString(36).slice(2);
+    const sc = document.createElement('script');
+    const cleanup = () => { clearTimeout(timer); try { delete window[name]; } catch (e) { window[name] = undefined; } sc.remove(); };
+    const timer = setTimeout(() => { cleanup(); reject(new Error('timeout')); }, timeout);
+    window[name] = (d) => { cleanup(); resolve(d); };
+    sc.onerror = () => { cleanup(); reject(new Error('script blocked')); };
+    sc.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + name;
+    document.head.appendChild(sc);
+  });
+}
 function vpnFirstOk(tasks) {
   return new Promise((resolve, reject) => {
     let left = tasks.length;
@@ -13271,11 +13392,19 @@ async function checkVpnAndWarn(force) {
   if (!force && Date.now() - _vpnLastOk < 10 * 60 * 1000) return window._vpnLast;   // свежая проверка уже была
   _vpnChecking = true;
   try {
-    const tasks = VPN_APIS.map(a => httpGetJson(a.url, 6000).then(d => {
-      const r = a.map(d);
-      if (r) r.via = new URL(a.url).hostname;
-      return r;
-    }));
+    window._vpnErrors = [];
+    const tasks = VPN_APIS.map(a => {
+      const host = new URL(a.url).hostname.replace(/^(api|get)\./, '');
+      return (a.jsonp ? httpJsonp(a.url, 9000) : httpGetJson(a.url, 9000)).then(d => {
+        const r = a.map(d);
+        if (r) r.via = host;
+        else window._vpnErrors.push(host + ': пустой ответ');
+        return r;
+      }, (e) => {
+        window._vpnErrors.push(host + (a.jsonp ? '(js)' : '') + ': ' + String((e && e.message) || e).slice(0, 24));
+        throw e;
+      });
+    });
     const res = await vpnFirstOk(tasks);
     _vpnLastOk = Date.now();
     _vpnAttempts = 0;
@@ -13304,7 +13433,11 @@ document.getElementById('btnCheckVpn')?.addEventListener('click', async () => {
   vibro(10);
   showToast('🛡 Проверяю VPN…');
   const r = await checkVpnAndWarn(true);
-  if (!r) { showToast('⚠️ Не удалось проверить — сервисы не ответили'); return; }
+  if (!r) {
+    const errs = (window._vpnErrors || []).slice(0, 4).join('; ');
+    showToast('⚠️ Не удалось проверить. ' + (errs || 'нет ответа') + (navigator.onLine === false ? ' · нет сети' : ''));
+    return;
+  }
   const where = r.org ? r.country + ' · ' + r.org.slice(0, 40) : r.country + ' (' + r.via + ')';
   showToast(r.vpn ? '⚠️ Похоже на VPN: ' + where : '✓ VPN не обнаружен: ' + where);
 });
