@@ -6066,6 +6066,51 @@ body.dark #screen4 .route-card.status-ndz .route-addr-input::placeholder,  body.
 body.dark .route-oos-chip { color: #f5b041; }
 body.dark .route-oos-chip.forced-in { color: #62d999; }
 </style>
+<style id="ios-banner-style">
+/* ─── Уведомления в стиле iOS ─── */
+#toast, #successNotif { display: none !important; }
+#iosBannerWrap {
+  position: fixed; left: 0; right: 0; top: 0; z-index: 100000;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: calc(env(safe-area-inset-top, 0px) + 8px) 10px 0;
+  pointer-events: none;
+}
+.ios-banner {
+  --ib-bg: rgba(255,255,255,.94); --ib-fg: #111; --ib-sub: rgba(0,0,0,.55);
+  pointer-events: auto; display: flex; align-items: center; gap: 12px;
+  padding: 11px 14px 11px 12px; border-radius: 22px;
+  background: var(--ib-bg); color: var(--ib-fg);
+  box-shadow: 0 8px 30px rgba(0,0,0,.18), 0 1px 3px rgba(0,0,0,.1), inset 0 0 0 .5px rgba(0,0,0,.06);
+  transform: translateY(-150%); opacity: 0;
+  transition: transform .5s cubic-bezier(.2,.9,.25,1.12), opacity .3s ease;
+  -webkit-tap-highlight-color: transparent; touch-action: pan-x;
+}
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .ios-banner { --ib-bg: rgba(255,255,255,.72); -webkit-backdrop-filter: blur(22px) saturate(180%); backdrop-filter: blur(22px) saturate(180%); }
+  body.dark .ios-banner { --ib-bg: rgba(44,44,46,.72); }
+}
+body.dark .ios-banner { --ib-bg: rgba(44,44,46,.94); --ib-fg: #fff; --ib-sub: rgba(255,255,255,.6);
+  box-shadow: 0 8px 30px rgba(0,0,0,.5), inset 0 0 0 .5px rgba(255,255,255,.1); }
+.ios-banner.in { transform: translateY(0); opacity: 1; }
+.ios-banner.out { transform: translateY(-140%); opacity: 0; transition: transform .38s ease-in, opacity .3s ease-in; }
+.ib-icon {
+  flex: 0 0 38px; width: 38px; height: 38px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; font-weight: 800; color: #fff; line-height: 1;
+  background: linear-gradient(145deg, #8e8e93, #636366);
+}
+.ios-banner.k-ok .ib-icon    { background: linear-gradient(145deg, #34c759, #248a3d); font-size: 22px; }
+.ios-banner.k-info .ib-icon  { background: linear-gradient(145deg, #0a84ff, #0060df); }
+.ios-banner.k-warn .ib-icon  { background: linear-gradient(145deg, #ff9f0a, #e07b00); font-size: 22px; }
+.ios-banner.k-error .ib-icon { background: linear-gradient(145deg, #ff453a, #d70015); font-size: 20px; }
+.ios-banner.k-grey .ib-icon  { background: linear-gradient(145deg, #8e8e93, #5a5a5f); }
+/* обычное эмодзи в иконке — на светлой плитке */
+.ios-banner:not(.k-ok):not(.k-info):not(.k-warn):not(.k-error):not(.k-grey) .ib-icon { background: rgba(120,120,128,.18); font-size: 21px; }
+.ib-body { flex: 1; min-width: 0; }
+.ib-title { font-size: 15px; font-weight: 600; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+.ib-sub { font-size: 13px; line-height: 1.25; margin-top: 2px; color: var(--ib-sub); }
+.ib-time { align-self: flex-start; font-size: 12px; color: var(--ib-sub); margin-top: 1px; }
+</style>
 <style id="route-pending-style">
 .route-pending-block { margin: 8px 8px 10px; }
 #screen4 .slot-grid + .route-pending-block { margin-top: 12px; }
@@ -7202,11 +7247,72 @@ function applyTheme(dark) {
 function toggleTheme() { applyTheme(!document.body.classList.contains('dark')); }
 applyTheme(localStorage.getItem(THEME_KEY) === 'dark');
 
+// ═══════════════════════════════════════════════
+// Уведомления в стиле iOS: плавающая «стеклянная» карточка сверху
+// ═══════════════════════════════════════════════
+function iosBanner(o) {
+  o = o || {};
+  const title = String(o.title || '').trim();
+  if (!title) return;
+  let wrap = document.getElementById('iosBannerWrap');
+  if (!wrap) {
+    wrap = document.createElement('div');
+    wrap.id = 'iosBannerWrap';
+    document.body.appendChild(wrap);
+  }
+  // тот же текст подряд — не дублируем
+  if (wrap._lastTitle === title && Date.now() - (wrap._lastAt || 0) < 1200) return;
+  wrap._lastTitle = title; wrap._lastAt = Date.now();
+
+  const el = document.createElement('div');
+  el.className = 'ios-banner' + (o.kind ? ' k-' + o.kind : '');
+  el.innerHTML = '<div class="ib-icon"></div><div class="ib-body"><div class="ib-title"></div><div class="ib-sub"></div></div><div class="ib-time">сейчас</div>';
+  el.querySelector('.ib-icon').textContent = o.icon || '🔔';
+  el.querySelector('.ib-title').textContent = title;
+  const subEl = el.querySelector('.ib-sub');
+  if (o.sub) subEl.textContent = o.sub; else subEl.remove();
+  wrap.insertBefore(el, wrap.firstChild);                    // новое — сверху, как в iOS
+  while (wrap.children.length > 3) wrap.lastElementChild.remove();
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
+
+  let timer = setTimeout(dismiss, o.duration || 3200);
+  function dismiss() {
+    if (el._gone) return;
+    el._gone = true; clearTimeout(timer);
+    el.classList.remove('in'); el.classList.add('out');
+    setTimeout(() => el.remove(), 400);
+  }
+  // свайп вверх — убрать, тап — убрать
+  let y0 = null, dy = 0;
+  el.addEventListener('touchstart', e => { y0 = e.touches[0].clientY; dy = 0; clearTimeout(timer); el.style.transition = 'none'; }, { passive: true });
+  el.addEventListener('touchmove', e => { if (y0 == null) return; dy = Math.min(0, e.touches[0].clientY - y0); el.style.transform = 'translateY(' + dy + 'px)'; }, { passive: true });
+  el.addEventListener('touchend', () => {
+    el.style.transition = ''; el.style.transform = '';
+    if (dy < -24) dismiss(); else timer = setTimeout(dismiss, 1800);
+    y0 = null;
+  });
+  el.addEventListener('click', dismiss);
+}
+
+// Обычные сообщения: эмодзи в начале текста становится иконкой баннера
 function showToast(text) {
-  const t = document.getElementById('toast');
-  t.textContent = text;
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 1800);
+  let t = String(text || '').trim();
+  let icon = '🔔', kind = '';
+  const m = t.match(/^(?:\p{Extended_Pictographic}\uFE0F?|[✓✔✗✘✕])\s*/u);
+  if (m) {
+    icon = m[0].trim();
+    t = t.slice(m[0].length).trim();
+    const g = icon.replace(/\uFE0F/g, '');
+    if (g === '⚠') kind = 'warn';
+    else if (['❌', '✗', '✘', '✕', '⛔'].includes(g)) kind = 'error';
+    else if (['✓', '✔', '✅'].includes(g)) kind = 'ok';
+    else if (g === 'ℹ') kind = 'info';
+    if (kind === 'ok') icon = '✓';
+    if (kind === 'error') icon = '✕';
+    if (kind === 'warn') icon = '!';
+    if (kind === 'info') icon = 'i';
+  }
+  iosBanner({ title: t || String(text), icon, kind });
 }
 async function copyText(text) {
   try { 
@@ -7253,51 +7359,14 @@ function applyCity(addr) {
 let _successTimeout = null;
 let _successHideTimeout = null;
 function showSuccessNotification(text, kind) {
-  const notif = document.getElementById('successNotif');
-  if (!notif) return;
-
-  // сбросить все состояния
-  clearTimeout(_successTimeout);
-  clearTimeout(_successHideTimeout);
-  notif.classList.remove('show', 'hiding');
-
-  // очистить старые цветовые классы
-  notif.classList.remove('notif-wait', 'notif-done', 'notif-perenos', 'notif-ndz');
-  if (kind === 'wait')    notif.classList.add('notif-wait');
-  if (kind === 'done')    notif.classList.add('notif-done');
-  if (kind === 'perenos') notif.classList.add('notif-perenos');
-  if (kind === 'ndz')     notif.classList.add('notif-ndz');
-
-  const textEl = notif.querySelector('.success-text');
-  if (textEl) textEl.textContent = text || 'Готово';
-  
-  // ─── Сброс анимаций галочки ───
-  const circle = notif.querySelector('.check-circle');
-  const mark = notif.querySelector('.check-mark');
-  [circle, mark].forEach(el => { 
-    el.style.animation = 'none'; 
-    el.offsetHeight; 
-    el.style.animation = ''; 
-  });
-
-  // ─── Сброс анимации ракеты ───
-  const rocket = notif.querySelector('.success-notif-rocket');
-  if (rocket) {
-    rocket.style.animation = 'none';
-    void rocket.offsetWidth;
-    rocket.style.animation = '';
-  }
-
-  // показать
-  void notif.offsetWidth;
-  notif.classList.add('show');
-
-  _successTimeout = setTimeout(() => {
-    notif.classList.add('hiding');
-    _successHideTimeout = setTimeout(() => {
-      notif.classList.remove('show', 'hiding');
-    }, 600);
-  }, 2200);   // ← было 1800, +400мс, чтобы ракета успела улететь
+  const map = {
+    done:    { icon: '✓', k: 'ok' },
+    wait:    { icon: '⏱', k: 'info' },
+    perenos: { icon: '✕', k: 'grey' },
+    ndz:     { icon: '!', k: 'error' }
+  };
+  const m = map[kind] || map.done;
+  iosBanner({ title: text || 'Готово', icon: m.icon, kind: m.k, duration: 2800 });
 }
 
 function isHoliday(date) {
