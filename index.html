@@ -6005,11 +6005,22 @@ body.dark .meet-accordion > .section-title.sec-meet {
 /* ─── «Ждёт» и «НДЗ»: карточка нейтральная, цвет и пульсация — только у кнопки статуса ─── */
 #screen4 .route-card.status-wait, #screen4 .route-card.status-ndz {
   background: linear-gradient(90deg, rgba(255,255,255,.95), rgba(255,255,255,.75)) !important;
-  box-shadow: inset 6px 0 0 #cfd8dc, 0 2px 6px rgba(0,0,0,.08) !important;
 }
 body.dark #screen4 .route-card.status-wait, body.dark #screen4 .route-card.status-ndz {
   background: linear-gradient(90deg, rgba(255,255,255,.10), rgba(255,255,255,.05)) !important;
-  box-shadow: inset 6px 0 0 #4a5a6a, 0 2px 6px rgba(0,0,0,.25) !important;
+}
+/* Свечение по левому краю: синее — «Ждёт», красное — «НДЗ» */
+#screen4 .route-card.status-wait {
+  box-shadow: inset 6px 0 0 #3498db, inset 18px 0 22px -12px rgba(52,152,219,.65), -4px 0 14px rgba(52,152,219,.55), 0 2px 6px rgba(0,0,0,.08) !important;
+}
+#screen4 .route-card.status-ndz {
+  box-shadow: inset 6px 0 0 #e74c3c, inset 18px 0 22px -12px rgba(231,76,60,.65), -4px 0 14px rgba(231,76,60,.55), 0 2px 6px rgba(0,0,0,.08) !important;
+}
+body.dark #screen4 .route-card.status-wait {
+  box-shadow: inset 6px 0 0 #3498db, inset 20px 0 24px -12px rgba(52,152,219,.75), -4px 0 18px rgba(52,152,219,.6), 0 2px 6px rgba(0,0,0,.25) !important;
+}
+body.dark #screen4 .route-card.status-ndz {
+  box-shadow: inset 6px 0 0 #e74c3c, inset 20px 0 24px -12px rgba(231,76,60,.75), -4px 0 18px rgba(231,76,60,.6), 0 2px 6px rgba(0,0,0,.25) !important;
 }
 #screen4 .route-card.status-wait .route-addr-input, #screen4 .route-card.status-wait .route-note-input,
 #screen4 .route-card.status-ndz .route-addr-input,  #screen4 .route-card.status-ndz .route-note-input {
