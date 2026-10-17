@@ -10266,7 +10266,7 @@ async function kmRecalcToday(force) {
     if (h[key]) { delete h[key]; kmSaveHistory(h); kmRefreshSection(); }
     return;
   }
-  if (navigator.onLine === false) return;
+  // navigator.onLine в WebView на мобильной сети бывает ложным «нет» — не проверяем, просто пробуем
 
   _kmBusy = true;
   try {
@@ -13226,10 +13226,10 @@ setInterval(() => { if (checkAutoReset2()) render2(); }, 60 * 1000);
 renderRoute();
 updateActivitiesBadge();
 
-// ─── Стартовый экран: с 10:00 до 18:00 (и если есть интернет) — «Карта», иначе «Активности» ───
+// ─── Стартовый экран: с 10:00 до 18:00 — «Карта», иначе «Активности» ───
 const _startOnMap = (() => {
   const h = new Date().getHours();
-  return h >= 10 && h < 18 && navigator.onLine !== false;
+  return h >= 10 && h < 18;
 })();
 
 // ─── Принудительно открываем стартовый экран ───
