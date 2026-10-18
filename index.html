@@ -10697,23 +10697,33 @@ setTimeout(() => { try { liveNotifSync(); } catch (e) {} }, 1500);   // посл
 /* ═══════════════════════════════════════════════
    Диагностика запуска: журнал последних запусков
    ═══════════════════════════════════════════════ */
-document.getElementById('btnBootLog')?.addEventListener('click', () => {
+document.getElementById('btnBootLog')?.addEventListener('click', async () => {
   document.getElementById('menu3')?.classList.remove('show');
   vibro(10);
   let a = [];
   try { a = JSON.parse(localStorage.getItem('boot_log') || '[]'); } catch (e) {}
-  const lines = a.slice().reverse().map(b => {
-    const d = new Date(b.t);
-    const time = d.toLocaleDateString('ru-RU').slice(0, 5) + ' ' + d.toLocaleTimeString('ru-RU');
+  const hm = t => new Date(t).toLocaleDateString('ru-RU').slice(0, 5) + ' ' + new Date(t).toLocaleTimeString('ru-RU');
+  const lines = ['— Запуски страницы —'].concat(a.slice(-5).reverse().map(b => {
     return [
-      time + ' · ' + (b.nav || '?'),
-      '   SW: ' + (b.sw ? 'да' : 'нет') + ' · экран ' + b.w + '×' + b.h + ' · сеть: ' + (b.ol === false ? 'нет' : 'да'),
-      '   DOM: ' + (b.dcl != null ? b.dcl + ' мс' : '—') + ' · load: ' + (b.load != null ? b.load + ' мс' : '—'),
-      (b.ws ? '   смена ширины: ' + b.ws + '\n' : '') + '   ',
-      '   ' + (b.ready != null ? '✓ готов за ' + b.ready + ' мс (ширина ' + b.readyW + ')' : '✗ НЕ ДОШЁЛ ДО ГОТОВНОСТИ')
+      hm(b.t) + ' · ' + (b.nav || '?') + ' · SW ' + (b.sw ? 'да' : 'нет'),
+      '   ' + (b.ready != null ? '✓ готов за ' + b.ready + ' мс' : '✗ НЕ ДОШЁЛ ДО ГОТОВНОСТИ') + (b.ws ? ' · смена ширины: ' + b.ws : '')
     ].join('\n');
+  }));
+  if (a.length === 0) lines.push('пока пусто');
+  // Журнал сервис-воркера: что он отдал при каждом запуске
+  let swl = [];
+  try {
+    const c = await caches.open('mvs-log');
+    const m = await c.match('/__swlog.json');
+    if (m) swl = await m.json();
+  } catch (e) {}
+  lines.push('', '— Что отдавал воркер —');
+  if (!swl.length) lines.push('пока пусто');
+  swl.slice(-8).reverse().forEach(e => {
+    lines.push(hm(e.t) + ' · ' + e.how + (e.len ? ' · ' + Math.round(e.len / 1000) + ' КБ' : '') + (e.ms != null ? ' · ' + e.ms + ' мс' : '') +
+      (e.badLen != null ? ' · первый ответ: ' + e.badLen + ' байт' : '') + (e.err ? ' · ' + e.err : ''));
   });
-  vpnShowReport(lines.length ? lines : ['Журнал пока пуст.'], '🧪 Запуски приложения');
+  vpnShowReport(lines, '🧪 Запуски приложения');
 });
 
 /* ═══════════════════════════════════════════════
