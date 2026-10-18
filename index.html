@@ -8832,34 +8832,12 @@ if (typeof updateB2cField === 'function') {
   // ─── Фокус-режим: ищем активную карточку по startedAt ───
   app.classList.remove('has-live');
   
-  // Проходим по слотам — если в слоте есть активная встреча,
-  // ищем соответствующую DOM-карточку по позиции (idx)
+  // Карточка начатой встречи уже помечена route-card-live при построении (по самому элементу),
+  // поэтому по адресу не ищем — иначе выделялись бы все встречи с одинаковым или пустым адресом.
   let hasLive = false;
   ROUTE_TIMES.forEach(t => {
-    const list = routeState.lists[t.id] || [];
-    const cards = app.querySelectorAll(`.route-time-block[data-time-id="${t.id}"] .route-card`);
-    if (!cards.length) return;
-    
-    // Сопоставляем по индексу
-    let cardIdx = 0;
-    list.forEach((item) => {
-      if (item.status === 'done' || item.status === 'perenos') return; // collapsed — пропускаем в DOM-сопоставлении? нет, они тоже в DOM
-      // На самом деле collapsed-карточки тоже в DOM. Идём по всем.
-    });
-    
-    // Проще: находим карточку по textContent адреса
-    list.forEach((item) => {
-      if (!item || !item.startedAt) return;
-      hasLive = true;
-      const itemAddr = (item.addr || '').trim();
-      cards.forEach(card => {
-        const addrInput = card.querySelector('.route-addr-input');
-        const addrCollapsed = card.querySelector('.route-addr-collapsed');
-        const cardAddr = (addrInput ? addrInput.value : (addrCollapsed ? addrCollapsed.textContent : '')).trim();
-        if (cardAddr === itemAddr && !card.classList.contains('route-card-live')) {
-          card.classList.add('route-card-live');
-        }
-      });
+    (routeState.lists[t.id] || []).forEach(item => {
+      if (item && item.startedAt) hasLive = true;
     });
   });
 
