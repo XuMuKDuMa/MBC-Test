@@ -10,6 +10,23 @@
 (function () {
   var errs = [];
   window.__appReady = false;
+
+  // ─── Журнал запусков для диагностики: последние 10 запусков в localStorage ───
+  var boot = { t: Date.now(), w: window.innerWidth, h: window.innerHeight, sw: !!(navigator.serviceWorker && navigator.serviceWorker.controller), vis: document.visibilityState, ol: navigator.onLine, nav: '' };
+  try { var nv = performance.getEntriesByType('navigation')[0]; boot.nav = nv ? nv.type : ''; } catch (e) {}
+  function bootSave() {
+    try {
+      var a = JSON.parse(localStorage.getItem('boot_log') || '[]');
+      var i = -1; for (var k = 0; k < a.length; k++) { if (a[k].t === boot.t) i = k; }
+      if (i >= 0) a[i] = boot; else a.push(boot);
+      while (a.length > 10) a.shift();
+      localStorage.setItem('boot_log', JSON.stringify(a));
+    } catch (e) {}
+  }
+  window.__bootMark = function (name) { boot[name] = Date.now() - boot.t; boot[name + 'W'] = window.innerWidth; bootSave(); };
+  bootSave();
+  document.addEventListener('DOMContentLoaded', function () { window.__bootMark('dcl'); });
+  window.addEventListener('load', function () { window.__bootMark('load'); });
   window.addEventListener('error', function (e) { if (errs.length < 5) errs.push(String(e.message || 'ошибка') + (e.lineno ? ' (стр. ' + e.lineno + ')' : '')); });
   window.addEventListener('unhandledrejection', function (e) { if (errs.length < 5) errs.push('promise: ' + String((e.reason && e.reason.message) || e.reason)); });
 
@@ -6352,6 +6369,7 @@ body.dark .route-list-title { background: linear-gradient(135deg, #46607a, #3449
   <button id="btnOpenMaxGroups" style="color:#6c5ce7;">💬 Группы в MAX</button>
   <button id="btnTestNotif" style="color:#16a085;">🔔 Проверить уведомление</button>
   <button id="btnCheckVpn" style="color:#2980b9;">🛡 Проверить VPN</button>
+  <button id="btnBootLog" style="color:#7f8c8d;">🧪 Диагностика запуска</button>
   <button id="btnToggleTheme">🌙 Сменить тему</button>
   <button id="btnResetTotalsMenu">🗑 Сбросить итоги за месяц</button>
   <button id="btnFixDupHistory">🔧 Исправить дубли в истории</button>
@@ -10676,6 +10694,27 @@ setTimeout(() => { try { liveNotifSync(); } catch (e) {} }, 1500);   // посл
 
 
 /* ═══════════════════════════════════════════════
+   Диагностика запуска: журнал последних запусков
+   ═══════════════════════════════════════════════ */
+document.getElementById('btnBootLog')?.addEventListener('click', () => {
+  document.getElementById('menu3')?.classList.remove('show');
+  vibro(10);
+  let a = [];
+  try { a = JSON.parse(localStorage.getItem('boot_log') || '[]'); } catch (e) {}
+  const lines = a.slice().reverse().map(b => {
+    const d = new Date(b.t);
+    const time = d.toLocaleDateString('ru-RU').slice(0, 5) + ' ' + d.toLocaleTimeString('ru-RU');
+    return [
+      time + ' · ' + (b.nav || '?'),
+      '   SW: ' + (b.sw ? 'да' : 'нет') + ' · экран ' + b.w + '×' + b.h + ' · сеть: ' + (b.ol === false ? 'нет' : 'да'),
+      '   DOM: ' + (b.dcl != null ? b.dcl + ' мс' : '—') + ' · load: ' + (b.load != null ? b.load + ' мс' : '—'),
+      '   ' + (b.ready != null ? '✓ готов за ' + b.ready + ' мс (ширина ' + b.readyW + ')' : '✗ НЕ ДОШЁЛ ДО ГОТОВНОСТИ')
+    ].join('\n');
+  });
+  vpnShowReport(lines.length ? lines : ['Журнал пока пуст.'], '🧪 Запуски приложения');
+});
+
+/* ═══════════════════════════════════════════════
    Проверка системных уведомлений (шторка) в APK
    ═══════════════════════════════════════════════ */
 document.getElementById('btnTestNotif')?.addEventListener('click', async () => {
@@ -13633,6 +13672,15 @@ requestAnimationFrame(() => {
 // ─── На случай медленной загрузки — ещё раз через 100мс и 500мс ───
 setTimeout(forceOpenActivitiesTab, 100);
 setTimeout(forceOpenActivitiesTab, 500);
+// Холодный старт: оболочка иногда отдаёт размеры экрана с задержкой — если экран так и не расставлен, повторяем
+function _ensurePositioned() {
+  try {
+    const tr = (screensTrack.style.transform || '').replace(/\s/g, '');
+    if (tr === '' || /^translateX\(-?0(px)?\)$/.test(tr)) { if (currentTab !== 5) forceOpenActivitiesTab(); }
+  } catch (e) {}
+}
+[900, 1800, 3000].forEach(ms => setTimeout(_ensurePositioned, ms));
+window.addEventListener('resize', () => setTimeout(_ensurePositioned, 50));
 
 // Рабочее время — после старта переключаемся на карту полноценно (инициализация карты, маркеры)
 if (_startOnMap) {
@@ -14905,6 +14953,7 @@ window.addEventListener('focus', runAllTimeChecksNow);
 
 // Запуск дошёл до конца — страховка от белого экрана больше не нужна
 window.__appReady = true;
+try { window.__bootMark && window.__bootMark('ready'); } catch (e) {}
 try { sessionStorage.removeItem('mvs_autoheal'); } catch (e) {}
 </script>
 
