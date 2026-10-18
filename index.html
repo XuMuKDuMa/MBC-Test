@@ -55,6 +55,17 @@
     (document.body || document.documentElement).appendChild(d);
   }
   window.__healApp = heal;
+  // сигнал воркеру «страница жива» (иначе он решит, что экран белый, и перезагрузит страницу)
+  function pingAlive() {
+    try {
+      if (!navigator.serviceWorker) return;
+      var send = function (sw) { if (sw) sw.postMessage({ type: 'alive' }); };
+      if (navigator.serviceWorker.controller) send(navigator.serviceWorker.controller);
+      navigator.serviceWorker.ready.then(function (reg) { send(navigator.serviceWorker.controller || reg.active); });
+    } catch (e) {}
+  }
+  pingAlive();
+  setTimeout(pingAlive, 1500);
   setTimeout(function () {
     if (window.__appReady) return;
     var tried = null;
@@ -11171,6 +11182,48 @@ const ANALYSIS_SALES = [
 function getPlanUP() { return localStorage.getItem(PLAN_KEY) || ''; }
 function setPlanUP(v) { localStorage.setItem(PLAN_KEY, v); }
 
+
+/* ═══════════════════════════════════════════════
+   Итоги: прогноз по плану (темп, встречи на продажу, продажи до плана)
+   ═══════════════════════════════════════════════ */
+function forecastBlockHtml(o) {
+  const plan = o.plan, monthUP = o.monthUP, remains = o.remains, wd = o.wd;
+  if (!(plan > 0)) return '';
+  const fmt = (v, d) => (Math.round(v * Math.pow(10, d)) / Math.pow(10, d)).toFixed(d).replace('.', ',');
+  const row = (name, val, sub, color) => `<div class="row" style="justify-content:space-between;align-items:center;">
+      <div class="name" style="flex:1">${name}</div>
+      <div style="text-align:right;"><div style="font-weight:700;font-size:14px;${color ? 'color:' + color + ';' : ''}">${val}</div>${sub ? '<div style="font-weight:600;color:#95a5a6;font-size:11px;margin-top:2px;">' + sub + '</div>' : ''}</div>
+    </div>`;
+  let body = '';
+  if (remains <= 0) {
+    body = row('План выполнен', '🎉', 'сверх плана ' + fmt(-remains, 2) + ' УП', '#27ae60');
+  } else {
+    const left = wd.remaining;
+    const need = left > 0 ? remains / left : remains;
+    const pace = o.daysWorked > 0 ? monthUP / o.daysWorked : 0;
+    const projected = monthUP + pace * left;
+    const gap = plan - projected;
+    // средний УП на одну продажу — по продажам этого месяца (иначе по средним коэффициентам)
+    const sales = getSalesForMonth(o.year, o.month);
+    const upByName = {};
+    SECTIONS1.forEach(sec => (sec.items || []).forEach(it => { if (it.type !== 'meeting' && it.type !== 'biz') upByName[it.name] = it.up; }));
+    let upSum = 0, cnt = 0;
+    (sales.entries || []).forEach(e => { const up = upByName[e.name]; if (up != null) { upSum += up * e.count; cnt += e.count; } });
+    let avgUp = cnt > 0 ? upSum / cnt : 0, avgNote = 'по твоим продажам';
+    if (!avgUp) { avgUp = ANALYSIS_SALES.reduce((a, s) => a + s.coef, 0) / ANALYSIS_SALES.length; avgNote = 'по средним коэффициентам'; }
+    const salesTotal = sales.totalSum || 0;
+    const meetPerSale = salesTotal > 0 && o.sumMeetings > 0 ? o.sumMeetings / salesTotal : null;
+    const salesNeed = Math.ceil(remains / avgUp);
+    body = row('Осталось до плана', fmt(remains, 2) + ' УП', left + ' раб. дн. впереди')
+      + row('Нужно в день', fmt(need, 2) + ' УП', pace > 0 ? 'сейчас у тебя ' + fmt(pace, 2) + ' в день' : '', need > pace && pace > 0 ? '#e67e22' : '#27ae60')
+      + (pace > 0 ? row('Прогноз к концу месяца', fmt(projected, 1) + ' УП', gap > 0 ? 'не хватает ' + fmt(gap, 1) + ' УП' : 'план будет выполнен ✓', gap > 0 ? '#e74c3c' : '#27ae60') : '')
+      + row('Встреч на 1 продажу', meetPerSale ? fmt(meetPerSale, 1) : '—', meetPerSale ? o.sumMeetings + ' встреч · ' + salesTotal + ' продаж' : 'пока нет продаж за месяц')
+      + row('Продаж до плана', '≈ ' + salesNeed, 'в среднем ' + fmt(avgUp, 2) + ' УП на продажу (' + avgNote + ')', '#3949ab')
+      + (meetPerSale ? row('Встреч для этих продаж', '≈ ' + Math.ceil(salesNeed * meetPerSale), 'при твоей конверсии') : '');
+  }
+  return `<div class="section"><div class="section-title" style="background:#3949ab;">🧮 Прогноз по плану</div>${body}</div>`;
+}
+
 function renderTotals3() {
   if (typeof state2 === 'undefined' || !state2 || !state2.month) return;
   const app = document.getElementById('app3');
@@ -11289,9 +11342,7 @@ const trBlock = `
     <div class="section"><div class="section-title sec-total">${getMonthNameLocal()} — ${days} ${days === 1 ? 'день' : 'дней'}</div><div class="total-grid"><div class="total-card full"><div class="label">УП за месяц</div><div class="value">${monthUP.toFixed(2)}</div></div><div class="total-card"><div class="label">УП за сегодня</div><div class="value">${todayUP.toFixed(2)}</div></div>${plan > 0 ? (remains <= 0 ? `<div class="total-card ok"><div class="label">План выполнен</div><div class="value">🎉</div></div>` : `<div class="total-card"><div class="label">Осталось</div><div class="value">${remains.toFixed(2)}</div></div>`) : '<div class="total-card"><div class="label">Осталось</div><div class="value">—</div></div>'}<div class="total-card btn-sales" id="btnSalesChart"><div class="label">📊 Продажи</div><div class="value">→</div></div><div class="total-card btn-meetings" id="btnMeetingsChart"><div class="label">👥 B2C/B2B</div><div class="value">→</div></div>${plan > 0 ? `<div class="progress-bar"><div class="fill" style="width:${progress}%;"></div><div class="text">${progress.toFixed(1)}%</div></div>` : ''}</div></div>
         ${daysBlock}
     ${chartBlock}
-    ${kmSectionHtml()}
-    ${fuelSectionHtml()}
-    ${trBlock}
+    ${forecastBlockHtml({ plan, monthUP, remains, wd: wdStats, daysWorked: days, sumMeetings, year, month })}
     ${plan > 0 && remains > 0 ? `
 <div class="section">
   <div class="section-title sec-meet-analysis accordion-title" id="meetPlanToggle" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
@@ -11312,6 +11363,9 @@ const trBlock = `
   </div>
 </div>` : ''}
     ${plan > 0 && remains <= 0 ? `<div class="plan-done">🎉 План выполнен! 🎉</div>` : ''}
+    ${trBlock}
+    ${kmSectionHtml()}
+    ${fuelSectionHtml()}
     <div class="section">
       <div class="section-title sec-months history-toggle" id="daysHistoryToggle" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
         <span>📅 История по дням месяца</span>
@@ -13873,7 +13927,7 @@ function vpnCollect() {
 // force = true — проверить сейчас, игнорируя «свежий» результат (кнопка в меню)
 async function checkVpnAndWarn(force) {
   if (_vpnChecking) return window._vpnLast;
-  if (!force && Date.now() - _vpnLastOk < 10 * 60 * 1000) return window._vpnLast;   // свежая проверка уже была
+  if (!force && Date.now() - _vpnLastOk < 60 * 1000) return window._vpnLast;   // свежая проверка (≤ минуты) уже была
   _vpnChecking = true;
   try {
     const results = await vpnCollect();
@@ -13915,6 +13969,16 @@ async function checkVpnAndWarn(force) {
     _vpnChecking = false;
   }
 }
+// Нажали «Маршрут»: с включённым VPN Яндекс.Карты не открываются — предупреждаем
+function vpnNavGuard() {
+  try {
+    const last = window._vpnLast;
+    if (last && last.vpn && Date.now() - last.ts < 60000) { showVpnWarning(); return; }
+    checkVpnAndWarn(true);          // проверит заново; если VPN — покажет предупреждение сам
+  } catch (e) {}
+}
+// Сеть поменялась (часто — включили/выключили VPN): перепроверяем, если открыта карта
+window.addEventListener('online', () => { setTimeout(() => { if (typeof currentTab !== 'undefined' && currentTab === 5) checkVpnAndWarn(true); }, 1500); });
 // Вернулись в приложение, пока открыта карта — проверяем заново (VPN могли включить)
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && typeof currentTab !== 'undefined' && currentTab === 5) checkVpnAndWarn(false);
@@ -14587,6 +14651,7 @@ window.openNavigator = function(addrEncoded) {
   // Маршрут: «Моё местоположение → адрес»
   const url = 'https://yandex.ru/maps/?rtext=~' + encoded + '&rtt=auto';
   window.open(url, '_blank');
+  vpnNavGuard();
 };
 
 document.querySelectorAll('.map-filter').forEach(btn => {
@@ -14627,6 +14692,7 @@ document.getElementById('aapBody')?.addEventListener('click', (e) => {
   const encoded = encodeURIComponent(fullAddr);
   vibro(15);
   window.open('https://yandex.ru/maps/?text=' + encoded, '_blank');
+  vpnNavGuard();
 });  
 
 loadGeocache();
@@ -14980,6 +15046,19 @@ window.addEventListener('focus', runAllTimeChecksNow);
 // Запуск дошёл до конца — страховка от белого экрана больше не нужна
 window.__appReady = true;
 try { window.__bootMark && window.__bootMark('ready'); } catch (e) {}
+// Если воркер только что сам перезагрузил белый экран — говорим об этом
+(async () => {
+  try {
+    const c = await caches.open('mvs-log');
+    const m = await c.match('/__swlog.json');
+    const a = m ? await m.json() : [];
+    const last = a[a.length - 1];
+    if (last && last.how === 'white-reload' && Date.now() - last.t < 40000) {
+      iosBanner({ title: 'Был белый экран — приложение перезагрузилось само', sub: 'Если повторяется, откройте «Диагностика запуска»', icon: '!', kind: 'warn', duration: 6500 });
+      vibro([150, 80, 150]);
+    }
+  } catch (e) {}
+})();
 try { sessionStorage.removeItem('mvs_autoheal'); } catch (e) {}
 </script>
 
