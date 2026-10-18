@@ -23,6 +23,7 @@
       localStorage.setItem('boot_log', JSON.stringify(a));
     } catch (e) {}
   }
+  window.__bootNote = function (k, v) { boot[k] = v; bootSave(); };
   window.__bootMark = function (name) { boot[name] = Date.now() - boot.t; boot[name + 'W'] = window.innerWidth; bootSave(); };
   bootSave();
   document.addEventListener('DOMContentLoaded', function () { window.__bootMark('dcl'); });
@@ -10708,6 +10709,7 @@ document.getElementById('btnBootLog')?.addEventListener('click', () => {
       time + ' · ' + (b.nav || '?'),
       '   SW: ' + (b.sw ? 'да' : 'нет') + ' · экран ' + b.w + '×' + b.h + ' · сеть: ' + (b.ol === false ? 'нет' : 'да'),
       '   DOM: ' + (b.dcl != null ? b.dcl + ' мс' : '—') + ' · load: ' + (b.load != null ? b.load + ' мс' : '—'),
+      (b.ws ? '   смена ширины: ' + b.ws + '\n' : '') + '   ',
       '   ' + (b.ready != null ? '✓ готов за ' + b.ready + ' мс (ширина ' + b.readyW + ')' : '✗ НЕ ДОШЁЛ ДО ГОТОВНОСТИ')
     ].join('\n');
   });
@@ -13672,21 +13674,35 @@ requestAnimationFrame(() => {
 // ─── На случай медленной загрузки — ещё раз через 100мс и 500мс ───
 setTimeout(forceOpenActivitiesTab, 100);
 setTimeout(forceOpenActivitiesTab, 500);
-// Холодный старт: оболочка иногда отдаёт размеры экрана с задержкой — если экран так и не расставлен, повторяем
-function _ensurePositioned() {
-  try {
-    const tr = (screensTrack.style.transform || '').replace(/\s/g, '');
-    if (tr === '' || /^translateX\(-?0(px)?\)$/.test(tr)) { if (currentTab !== 5) forceOpenActivitiesTab(); }
-  } catch (e) {}
-}
-[900, 1800, 3000].forEach(ms => setTimeout(_ensurePositioned, ms));
-window.addEventListener('resize', () => setTimeout(_ensurePositioned, 50));
+// ─── Холодный старт: оболочка APK сначала отдаёт странице «заглушку» ширины (980), а настоящую —
+// позже, и событие resize не всегда приходит. Первые 8 секунд следим за шириной сами и
+// переставляем экраны, как только она поменялась — иначе остаётся белый экран. ───
+window.__mapStartDone = false;
+let _guardLastW = null;
+(function guardStartWidth() {
+  const t0 = performance.now();
+  function tick() {
+    try {
+      const w = window.innerWidth;
+      if (w && w !== _guardLastW) {
+        if (_guardLastW !== null && window.__bootNote) window.__bootNote('ws', ((window.__bootWs = (window.__bootWs || '') + Math.round(performance.now() - t0) + 'мс:' + _guardLastW + '→' + w + ' ')));
+        _guardLastW = w;
+        const idx = (_startOnMap && !window.__mapStartDone && currentTab === 4) ? 4 : (currentTab - 1);
+        screensTrack.style.transition = 'none';
+        screensTrack.style.transform = `translateX(${-idx * w}px)`;
+      }
+    } catch (e) {}
+    if (performance.now() - t0 < 8000) setTimeout(tick, 120);
+  }
+  tick();
+})();
 
 // Рабочее время — после старта переключаемся на карту полноценно (инициализация карты, маркеры)
 if (_startOnMap) {
   setTimeout(() => {
     try { if (currentTab === 4) goToTab(5, false); }
     catch (e) { console.warn('Старт на карте не удался:', e); }
+    window.__mapStartDone = true;
   }, 250);
 }
 
