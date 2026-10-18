@@ -2,6 +2,50 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
+<script>
+// ─── Страховка от «белого экрана» ───
+// Если приложение не дошло до конца запуска за 6 секунд: один раз само чистит кэш и сервис-воркер
+// и перезагружается; если не помогло — показывает окно с причиной и кнопкой «Починить».
+// Данные приложения (localStorage) не затрагиваются.
+(function () {
+  var errs = [];
+  window.__appReady = false;
+  window.addEventListener('error', function (e) { if (errs.length < 5) errs.push(String(e.message || 'ошибка') + (e.lineno ? ' (стр. ' + e.lineno + ')' : '')); });
+  window.addEventListener('unhandledrejection', function (e) { if (errs.length < 5) errs.push('promise: ' + String((e.reason && e.reason.message) || e.reason)); });
+
+  function cleanUrl() { return location.href.split('#')[0].split('?')[0]; }
+  function heal() {
+    var go = function () { location.replace(cleanUrl() + '?r=' + Date.now()); };
+    var jobs = [];
+    try { if (navigator.serviceWorker) jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); })); } catch (e) {}
+    try { if (window.caches) jobs.push(caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); })); } catch (e) {}
+    Promise.all(jobs).then(go, go);
+    setTimeout(go, 2500);
+  }
+  function showOverlay() {
+    var d = document.createElement('div');
+    d.style.cssText = 'position:fixed;left:0;top:0;right:0;bottom:0;z-index:2147483647;background:#101820;color:#fff;font-family:system-ui,sans-serif;padding:32px 22px;overflow:auto;text-align:center;';
+    var h = document.createElement('div'); h.style.cssText = 'font-size:44px;margin-top:20px'; h.textContent = '⚠️';
+    var t = document.createElement('div'); t.style.cssText = 'font-size:20px;font-weight:700;margin:12px 0 8px'; t.textContent = 'Приложение запустилось не полностью';
+    var p = document.createElement('div'); p.style.cssText = 'font-size:14px;opacity:.75;line-height:1.5;margin-bottom:14px'; p.textContent = 'Твои данные на месте. Нажми «Починить» — страница загрузится заново, начисто.';
+    var pre = document.createElement('div'); pre.style.cssText = 'font-size:12px;text-align:left;background:rgba(255,255,255,.08);border-radius:10px;padding:10px 12px;margin:0 0 18px;word-break:break-word;white-space:pre-wrap;';
+    pre.textContent = errs.length ? errs.join('\n') : 'Ошибок JavaScript нет — страница, скорее всего, пришла из кэша неполной.';
+    function btn(label, bg, fn) { var b = document.createElement('button'); b.textContent = label; b.style.cssText = 'display:block;width:100%;padding:15px;margin:0 0 10px;border:0;border-radius:12px;font-size:16px;font-weight:700;color:#fff;background:' + bg + ';'; b.onclick = fn; return b; }
+    d.appendChild(h); d.appendChild(t); d.appendChild(p); d.appendChild(pre);
+    d.appendChild(btn('Починить и перезапустить', '#27ae60', heal));
+    d.appendChild(btn('Просто перезагрузить', '#34495e', function () { location.reload(); }));
+    (document.body || document.documentElement).appendChild(d);
+  }
+  window.__healApp = heal;
+  setTimeout(function () {
+    if (window.__appReady) return;
+    var tried = null;
+    try { tried = sessionStorage.getItem('mvs_autoheal'); } catch (e) {}
+    if (!tried) { try { sessionStorage.setItem('mvs_autoheal', '1'); } catch (e) {} heal(); return; }
+    showOverlay();
+  }, 6000);
+})();
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>МВС отчёты</title>
 <link rel="manifest" href="./manifest.webmanifest">
@@ -14858,6 +14902,10 @@ document.addEventListener('visibilitychange', () => {
 
 // На всякий случай - и при возврате фокуса окна (некоторые WebView не шлют visibilitychange)
 window.addEventListener('focus', runAllTimeChecksNow);
+
+// Запуск дошёл до конца — страховка от белого экрана больше не нужна
+window.__appReady = true;
+try { sessionStorage.removeItem('mvs_autoheal'); } catch (e) {}
 </script>
 
 <script>
