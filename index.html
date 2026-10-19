@@ -10728,6 +10728,15 @@ document.getElementById('btnBootLog')?.addEventListener('click', async () => {
     const m = await c.match('/__swlog.json');
     if (m) swl = await m.json();
   } catch (e) {}
+  let swInfo = 'не зарегистрирован';
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (reg) {
+      swInfo = (reg.active ? reg.active.scriptURL.split('/').pop() : 'нет active') + (reg.waiting ? ' · ждёт: ' + reg.waiting.scriptURL.split('/').pop() : '');
+      swInfo += '\n   кэши: ' + ((await caches.keys()).join(', ') || 'нет');
+    }
+  } catch (e) { swInfo = 'ошибка: ' + (e && e.message); }
+  lines.push('', 'Воркер сейчас: ' + swInfo);
   lines.push('', '— Что отдавал воркер —');
   if (!swl.length) lines.push('пока пусто');
   swl.slice(-8).reverse().forEach(e => {
@@ -11343,25 +11352,6 @@ const trBlock = `
         ${daysBlock}
     ${chartBlock}
     ${forecastBlockHtml({ plan, monthUP, remains, wd: wdStats, daysWorked: days, sumMeetings, year, month })}
-    ${plan > 0 && remains > 0 ? `
-<div class="section">
-  <div class="section-title sec-meet-analysis accordion-title" id="meetPlanToggle" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
-    <span>👥 Встречи для плана (${remains.toFixed(2)} УП)</span>
-    <span class="acc-arrow" id="meetPlanArrow" style="transition:transform 0.2s;font-size:12px;">▼</span>
-  </div>
-  <div id="meetPlanBody" style="display:none;">
-    ${meetRows.map(r => `<div class="analysis-row"><div class="label">${r.label}</div><div class="count">${r.count.toFixed(2)}</div></div>`).join('')}
-  </div>
-</div>
-<div class="section">
-  <div class="section-title sec-sales-analysis accordion-title" id="salesPlanToggle" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
-    <span>💰 Продажи для плана (${remains.toFixed(2)} УП)</span>
-    <span class="acc-arrow" id="salesPlanArrow" style="transition:transform 0.2s;font-size:12px;">▼</span>
-  </div>
-  <div id="salesPlanBody" style="display:none;">
-    ${salesRows.map(r => `<div class="analysis-row"><div class="label">${r.label}</div><div class="count">${r.count.toFixed(2)}</div></div>`).join('')}
-  </div>
-</div>` : ''}
     ${plan > 0 && remains <= 0 ? `<div class="plan-done">🎉 План выполнен! 🎉</div>` : ''}
     ${trBlock}
     ${kmSectionHtml()}
@@ -15067,7 +15057,11 @@ try { sessionStorage.removeItem('mvs_autoheal'); } catch (e) {}
   // Карта (Leaflet/Nominatim) по-прежнему требует интернет — это ожидаемо.
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').catch((e) => {
+      // ?v=4 — меняем адрес скрипта при каждой новой версии воркера: оболочка APK хранит старый sw.js в своём кэше
+      // и без этого новый воркер до телефона не доходит
+      navigator.serviceWorker.register('./sw.js?v=4', { updateViaCache: 'none' }).then((reg) => {
+        try { reg.update(); } catch (e) {}
+      }).catch((e) => {
         console.warn('Service Worker не зарегистрирован:', e);
       });
     });
