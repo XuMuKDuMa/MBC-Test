@@ -10526,9 +10526,9 @@ async function kmRecalcToday(force) {
   if (kmSignature() !== sig) kmSchedule();   // пока считали — маршрут поменялся
 }
 
-function kmMonthData() {
+function kmMonthData(ref) {
   const h = kmLoadHistory();
-  const now = new Date();
+  const now = ref || new Date();
   const rows = [];
   let total = 0;
   Object.keys(h).forEach(ds => {
@@ -10736,7 +10736,7 @@ document.getElementById('btnBootLog')?.addEventListener('click', async () => {
       swInfo += '\n   кэши: ' + ((await caches.keys()).join(', ') || 'нет');
     }
   } catch (e) { swInfo = 'ошибка: ' + (e && e.message); }
-  lines.push('', 'Воркер сейчас: ' + swInfo);
+  lines.push('', 'Воркер сейчас: ' + swInfo + (window.__swTakeover ? '\n   (воркер сборщика заменён на свой)' : ''));
   lines.push('', '— Что отдавал воркер —');
   if (!swl.length) lines.push('пока пусто');
   swl.slice(-8).reverse().forEach(e => {
@@ -11195,6 +11195,103 @@ function setPlanUP(v) { localStorage.setItem(PLAN_KEY, v); }
 /* ═══════════════════════════════════════════════
    Итоги: прогноз по плану (темп, встречи на продажу, продажи до плана)
    ═══════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════
+   ИИ-помощник: анализ ТОЛЬКО километража и расходов на бензин
+   (считает по правилам прямо в приложении, внешний ИИ и интернет не нужны)
+   ═══════════════════════════════════════════════ */
+function kmFuelAnalysisLines() {
+  const now = new Date();
+  const prevRef = new Date(now.getFullYear(), now.getMonth() - 1, 15);
+  const cur = kmMonthData(now), prev = kmMonthData(prevRef);
+  const f = fuelLoad();
+  const fuelOk = f.cons > 0 && f.price > 0;
+  const km1 = v => kmFmt(v);                                         // «12,3 км»
+  const pctTxt = (a, b) => b > 0 ? ((a - b) / b * 100) : null;
+  const sgn = v => (v > 0 ? '+' : '') + Math.round(v) + '%';
+  const monthName = now.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+  const L = [];
+  L.push('🚗 АНАЛИЗ КИЛОМЕТРАЖА И БЕНЗИНА · ' + monthName.toUpperCase());
+  L.push('');
+  const rows = cur.rows;
+  if (!rows.length) {
+    L.push('Пока нет данных за этот месяц.');
+    L.push('');
+    L.push('💡 Километраж считается по адресам с «Готово» и по тем, где нажато «Маршрут». Начни работать — и анализ появится.');
+    return L;
+  }
+  const n = rows.length, total = cur.total, avg = total / n;
+  const sorted = rows.slice().sort((a, b) => b.km - a.km);
+  const maxD = sorted[0], minD = sorted[sorted.length - 1];
+  const dayLbl = r => r.date.slice(0, 5);
+  L.push('📏 КИЛОМЕТРАЖ');
+  L.push('Всего: ' + km1(total) + ' за ' + n + ' ' + (n === 1 ? 'день' : (n < 5 ? 'дня' : 'дней')));
+  L.push('В среднем: ' + km1(avg) + ' в день');
+  if (n > 1) {
+    L.push('Самый длинный: ' + dayLbl(maxD) + ' — ' + km1(maxD.km));
+    L.push('Самый короткий: ' + dayLbl(minD) + ' — ' + km1(minD.km));
+  }
+  const stops = rows.reduce((a, r) => a + (r.manual ? 0 : (r.stops || 0)), 0);
+  const kmAuto = rows.reduce((a, r) => a + (r.manual ? 0 : (r.km || 0)), 0);
+  const perStop = stops > 0 ? kmAuto / stops : null;
+  if (perStop != null) L.push('На 1 адрес: ' + km1(perStop) + ' (' + stops + ' адр.)');
+  const pTot = prev.total, pn = prev.rows.length;
+  if (pn > 0) {
+    const dTot = pctTxt(avg, pTot / pn);
+    L.push('К прошлому месяцу: ' + (dTot == null ? '—' : sgn(dTot) + ' по среднему в день') + ' (было ' + km1(pTot / pn) + ' в день)');
+  }
+  // прогноз к концу месяца
+  const wd = getWorkingDaysStats();
+  const left = wd.remaining;
+  const projKm = total + avg * left;
+  if (left > 0 && n >= 3) L.push('Прогноз к концу месяца: ≈ ' + km1(projKm) + ' (ещё ' + left + ' раб. дн.)');
+
+  L.push('');
+  L.push('⛽ БЕНЗИН');
+  if (!fuelOk) {
+    L.push('Расход и цена не заданы. Укажи их в меню ⋮ → «⛽ Расход бензина» — тогда посчитаю затраты.');
+  } else {
+    const liters = total * f.cons / 100, cost = liters * f.price;
+    L.push('Потрачено: ' + fuelMoney(cost) + ' (' + fuelLiters(liters) + ')');
+    L.push('В среднем: ' + fuelMoney(cost / n) + ' в день');
+    L.push('1 км обходится в ' + (f.cons * f.price / 100).toFixed(2).replace('.', ',') + ' ₽ (' + String(f.cons).replace('.', ',') + ' л/100 км × ' + String(f.price).replace('.', ',') + ' ₽)');
+    if (n > 1) L.push('Самый дорогой день: ' + dayLbl(maxD) + ' — ' + fuelMoney(maxD.km * f.cons / 100 * f.price));
+    if (left > 0 && n >= 3) L.push('Прогноз к концу месяца: ≈ ' + fuelMoney(projKm * f.cons / 100 * f.price));
+    if (pn > 0) {
+      const pCost = prev.total * f.cons / 100 * f.price;
+      const d = pctTxt(cost / n, pCost / pn);
+      if (d != null) L.push('К прошлому месяцу: ' + sgn(d) + ' по затратам в день (было ' + fuelMoney(pCost / pn) + ')');
+    }
+  }
+
+  // наблюдения и советы — только про километраж и бензин
+  const tips = [];
+  const pts = kmLoadPoints();
+  if (!pts.start) tips.push('Не задана начальная точка — километраж считается только между адресами и занижен. Задай её в меню ⋮ → «🚗 Начальная и конечная точка».');
+  const missing = rows.filter(r => r.skipped > 0).length;
+  if (missing > 0) tips.push('В ' + missing + ' ' + (missing === 1 ? 'дне' : 'днях') + ' часть адресов не нашлась на карте — километраж за эти дни занижен. Укажи координаты вручную (📍 на карточке).');
+  const approx = rows.filter(r => r.approx && !r.manual).length;
+  if (approx > 0) tips.push(approx + ' ' + (approx === 1 ? 'день посчитан' : 'дней посчитано') + ' приблизительно (≈, без сети). Нажми «↻ Пересчитать сегодня», когда будет интернет.');
+  const manual = rows.filter(r => r.manual).length;
+  if (manual > 0) tips.push(manual + ' ' + (manual === 1 ? 'день введён' : 'дней введено') + ' вручную — в расчёт «километров на 1 адрес» такие дни не входят.');
+  if (n >= 3 && maxD.km > avg * 1.5) tips.push('День ' + dayLbl(maxD) + ' (' + km1(maxD.km) + ') на ' + Math.round((maxD.km / avg - 1) * 100) + '% длиннее среднего. Посмотри, не было ли лишних переездов, и в такие дни группируй адреса по районам.');
+  if (perStop != null && pn > 0) {
+    const pStops = prev.rows.reduce((a, r) => a + (r.manual ? 0 : (r.stops || 0)), 0);
+    const pKmAuto = prev.rows.reduce((a, r) => a + (r.manual ? 0 : (r.km || 0)), 0);
+    if (pStops > 0) {
+      const d = pctTxt(perStop, pKmAuto / pStops);
+      if (d != null && d > 20) tips.push('На 1 адрес приходится на ' + Math.round(d) + '% больше километров, чем в прошлом месяце — маршруты стали «рваными». Проверь порядок объезда.');
+      else if (d != null && d < -15) tips.push('Километров на 1 адрес стало меньше на ' + Math.round(-d) + '% — маршруты стали компактнее, так держать.');
+    }
+  }
+  if (n < 3) tips.push('Данных пока мало (' + n + ' ' + (n === 1 ? 'день' : 'дня') + ') — выводы будут точнее через несколько рабочих дней.');
+  L.push('');
+  L.push('💡 НАБЛЮДЕНИЯ');
+  if (!tips.length) L.push('Всё ровно: резких скачков по километражу и расходам не вижу.');
+  tips.forEach(t => L.push('• ' + t));
+  return L;
+}
+
 function forecastBlockHtml(o) {
   const plan = o.plan, monthUP = o.monthUP, remains = o.remains, wd = o.wd;
   if (!(plan > 0)) return '';
@@ -11384,10 +11481,10 @@ const trBlock = `
               </div>
     </div>
         <div class="section" id="aiAnalysisSection3">
-      <div class="section-title" style="background:#3949ab;">🤖 ИИ-помощник по итогам</div>
+      <div class="section-title" style="background:#3949ab;">🤖 ИИ-помощник: километраж и бензин</div>
       <div style="padding:12px;">
-        <div style="font-size:13px;color:#777;margin-bottom:10px;line-height:1.45;">Анализирует УП, выполнение плана, рабочие дни, встречи, продажи и сравнение с прошлым месяцем.</div>
-        <button type="button" id="runAiAnalysis3" style="width:100%;border:0;border-radius:10px;padding:13px 12px;background:#3949ab;color:#fff;font-weight:700;font-size:14px;cursor:pointer;">✨ Проанализировать результаты</button>
+        <div style="font-size:13px;color:#777;margin-bottom:10px;line-height:1.45;">Анализирует только километраж и расходы на бензин: итоги и средние значения, сравнение с прошлым месяцем, прогноз до конца месяца и наблюдения по маршрутам.</div>
+        <button type="button" id="runAiAnalysis3" style="width:100%;border:0;border-radius:10px;padding:13px 12px;background:#3949ab;color:#fff;font-weight:700;font-size:14px;cursor:pointer;">✨ Проанализировать километраж и бензин</button>
         <div id="aiAnalysisResult3" style="display:none;margin-top:12px;padding:12px;border-radius:10px;background:rgba(127,127,127,.08);font-size:13px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;"></div>
       </div>
     </div>`;
@@ -11408,76 +11505,7 @@ const trBlock = `
 
       setTimeout(() => {
         try {
-          const now = new Date();
-          const report = collectMonthlyReportByMonth(now.getFullYear(), now.getMonth());
-          const planValue = Number(getPlanUP()) || 0;
-          const up = Number(report.totals.up) || 0;
-          const days = Number(report.totals.days) || 0;
-          const meetings = Number(report.totals.meetings) || 0;
-          const salesCount = (report.sales.entries || []).reduce((s, i) => s + (Number(i.count) || 0), 0);
-          const b2c = Object.values(report.meetings.b2c || {}).reduce((s, n) => s + (Number(n) || 0), 0);
-          const b2b = Object.values(report.meetings.b2b || {}).reduce((s, n) => s + (Number(n) || 0), 0);
-
-          // TR мес / TR слот мес
-          const trNag = (state2.month && state2.month.trMonth && state2.month.trMonth.nag) || 0;
-          const trUsp = (state2.month && state2.month.trMonth && state2.month.trMonth.usp) || 0;
-          const slNag = (state2.month && state2.month.slotMonth && state2.month.slotMonth.nag) || 0;
-          const slUsp = (state2.month && state2.month.slotMonth && state2.month.slotMonth.usp) || 0;
-
-          // УП на ФД из истории
-          const h = loadHistory1();
-          let sumUPFD = 0;
-          Object.keys(h).forEach(ds => {
-            const p = ds.split('.');
-            if (p.length !== 3) return;
-            const m = parseInt(p[1]) - 1, y = parseInt(p[2]);
-            if (m === now.getMonth() && y === now.getFullYear()) {
-              sumUPFD += h[ds].upFD || 0;
-            }
-          });
-
-          const avg = days > 0 ? (up / days) : 0;
-          const fdShare = up > 0 ? Math.round((sumUPFD / up) * 100) : 0;
-          const trPct = trNag > 0 ? ((trUsp / trNag) * 100).toFixed(1) : '—';
-          const slPct = slNag > 0 ? ((slUsp / slNag) * 100).toFixed(1) : '—';
-
-          const lines = [];
-          lines.push('📊 АНАЛИЗ ЗА ' + report.monthName.toUpperCase());
-          lines.push('');
-          lines.push('💰 УП общий: ' + up.toFixed(2) + (planValue > 0 ? ' (план ' + planValue + ' → ' + ((up / planValue) * 100).toFixed(1) + '%)' : ' (план не задан)'));
-          lines.push('🎯 УП на ФД: ' + sumUPFD.toFixed(2) + ' (' + fdShare + '% от УП)');
-          lines.push('');
-          lines.push('📞 TR мес (не слот): ' + trNag + ' / ' + trUsp + ' (' + trPct + '%)');
-          lines.push('📞 TR слот мес: ' + slNag + ' / ' + slUsp + ' (' + slPct + '%)');
-          lines.push('');
-          lines.push('👥 Встречи: ' + meetings + ' (B2C: ' + b2c + ', B2B: ' + b2b + ')');
-          lines.push('🛒 Продажи: ' + salesCount);
-          lines.push('');
-          lines.push('📅 Рабочих дней: ' + days + '; средний УП/день: ' + avg.toFixed(2));
-
-          const verdict = [];
-          if (planValue > 0) {
-            const pct = (up / planValue) * 100;
-            if (pct >= 100) verdict.push('🎉 План выполнен!');
-            else if (pct >= 80) verdict.push('✅ Хороший темп.');
-            else if (pct >= 50) verdict.push('⚠️ Средний темп.');
-            else verdict.push('🔴 Отставание от плана.');
-          }
-          if (up > 0) {
-            if (fdShare >= 60) verdict.push('Отличная доля ФД.');
-            else if (fdShare >= 40) verdict.push('Нормальная доля ФД.');
-            else verdict.push('Мало УП на ФД.');
-          }
-          if (trNag > 0) {
-            const pct = (trUsp / trNag) * 100;
-            if (pct >= 80) verdict.push('TR высокая конверсия.');
-            else if (pct >= 50) verdict.push('TR средняя конверсия.');
-            else verdict.push('TR низкая конверсия.');
-          }
-          lines.push('');
-          lines.push('💡 ' + (verdict.join(' ') || 'Недостаточно данных.'));
-
-          aiResult3.textContent = lines.join('\n');
+          aiResult3.textContent = kmFuelAnalysisLines().join('\n');
         } catch (e) {
           console.error('AI error:', e);
           aiResult3.textContent = '❌ Ошибка: ' + e.message;
@@ -15059,11 +15087,29 @@ try { sessionStorage.removeItem('mvs_autoheal'); } catch (e) {}
     window.addEventListener('load', () => {
       // ?v=4 — меняем адрес скрипта при каждой новой версии воркера: оболочка APK хранит старый sw.js в своём кэше
       // и без этого новый воркер до телефона не доходит
-      navigator.serviceWorker.register('./sw.js?v=4', { updateViaCache: 'none' }).then((reg) => {
-        try { reg.update(); } catch (e) {}
-      }).catch((e) => {
-        console.warn('Service Worker не зарегистрирован:', e);
-      });
+      const SW_URL = './sw.js?v=4';
+      // На одном адресе может работать только один воркер. Сборщик APK подсовывает свой (__wta_offline_sw__.js),
+      // и он ломает запуск (белый экран). Находим чужой воркер, удаляем его и его кэш и ставим свой.
+      async function ensureOurWorker() {
+        try {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          let foreign = false;
+          for (const r of regs) {
+            const u = ((r.active || r.waiting || r.installing) || {}).scriptURL || '';
+            if (u.indexOf('__wta_offline_sw__') !== -1) { foreign = true; await r.unregister(); }
+          }
+          if (foreign && window.caches) {
+            for (const k of await caches.keys()) { if (k.indexOf('wta-') === 0) await caches.delete(k); }
+          }
+          if (foreign) window.__swTakeover = true;
+          const reg = await navigator.serviceWorker.register(SW_URL, { updateViaCache: 'none' });
+          try { reg.update(); } catch (e) {}
+        } catch (e) {
+          console.warn('Service Worker не зарегистрирован:', e);
+        }
+      }
+      ensureOurWorker();
+      setTimeout(ensureOurWorker, 4000);   // оболочка может поставить свой воркер позже нас — перехватываем снова
     });
   }
 </script>
