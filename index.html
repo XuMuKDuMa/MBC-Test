@@ -6238,6 +6238,19 @@ body.dark .ds-gl { color: #6db3e8; }
 body.dark .ds-gl.biz { color: #c39bd3; }
 body.dark .ds-chip.on { background: rgba(52,152,219,.28); }
 </style>
+<style id="addr-suggest-style">
+#addrSuggest {
+  position: fixed; z-index: 99990; display: none; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  background: rgba(255,255,255,.97); color: #1c2733; border-radius: 14px;
+  box-shadow: 0 10px 34px rgba(0,0,0,.28), inset 0 0 0 .5px rgba(0,0,0,.08);
+}
+#addrSuggest .as-item { padding: 10px 14px; border-bottom: 1px solid rgba(120,120,128,.18); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+#addrSuggest .as-item:last-child { border-bottom: none; }
+#addrSuggest .as-item:active { background: rgba(10,132,255,.14); }
+#addrSuggest .as-main { font-size: 15px; font-weight: 700; line-height: 1.25; }
+#addrSuggest .as-sub { font-size: 12px; opacity: .6; margin-top: 2px; }
+body.dark #addrSuggest { background: rgba(44,50,60,.97); color: #eef2f7; box-shadow: 0 10px 34px rgba(0,0,0,.6), inset 0 0 0 .5px rgba(255,255,255,.12); }
+</style>
 <style id="route-list-title-style">
 .route-list-title {
   display: flex; align-items: center; justify-content: space-between;
@@ -15281,6 +15294,170 @@ document.addEventListener('visibilitychange', () => {
 
 // На всякий случай - и при возврате фокуса окна (некоторые WebView не шлют visibilitychange)
 window.addEventListener('focus', runAllTimeChecksNow);
+
+
+/* ═══════════════════════════════════════════════
+   Подсказки адреса: улица → номер дома (корпус, буква) — по городу из «Моего города»
+   Источник — Photon (поиск по мере набора по данным OpenStreetMap)
+   ═══════════════════════════════════════════════ */
+(function addrSuggestModule() {
+  const box = document.createElement('div');
+  box.id = 'addrSuggest';
+  document.body.appendChild(box);
+
+  let activeEl = null, timer = null, ctrl = null, seq = 0, suppress = false, cityCoord = null, cityCoordFor = '';
+  const cache = new Map();
+
+  const norm = v => String(v || '').toLowerCase().replace(/ё/g, 'е').replace(/[.,]/g, ' ').replace(/\s+/g, ' ').trim();
+  // убираем «улица / ул. / проспект …», чтобы сравнивать только название
+  const coreName = v => norm(v).replace(/\b(улица|ул|проспект|пр-т|пр|переулок|пер|проезд|бульвар|б-р|шоссе|набережная|наб|площадь|пл|аллея|тупик|микрорайон|мкр)\b/g, '').replace(/\s+/g, ' ').trim();
+  const esc = v => String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  function hide() { box.style.display = 'none'; box.innerHTML = ''; }
+  function place(el) {
+    const r = el.getBoundingClientRect();
+    const vv = window.visualViewport;
+    const vh = vv ? vv.height : window.innerHeight;
+    box.style.left = Math.max(8, r.left) + 'px';
+    box.style.width = Math.min(window.innerWidth - 16, Math.max(260, r.width)) + 'px';
+    const below = vh - r.bottom;
+    if (below >= 170 || below >= r.top) { box.style.top = (r.bottom + 4) + 'px'; box.style.bottom = 'auto'; box.style.maxHeight = Math.max(120, Math.min(280, below - 12)) + 'px'; }
+    else { box.style.top = 'auto'; box.style.bottom = (window.innerHeight - r.top + 4) + 'px'; box.style.maxHeight = Math.max(120, Math.min(280, r.top - 12)) + 'px'; }
+  }
+  function inCity(p, cityN) {
+    if (!cityN) return true;
+    return [p.city, p.town, p.village, p.locality, p.district, p.county, p.state_district].some(v => v && norm(v).includes(cityN));
+  }
+  async function getCityCoord(city) {
+    if (!city) return null;
+    if (cityCoordFor === city && cityCoord) return cityCoord;
+    try { const c = await geocodeAddress(city, true); if (c) { cityCoord = c; cityCoordFor = city; return c; } } catch (e) {}
+    return null;
+  }
+  async function photon(q, street) {
+    const key = (street ? 'S|' : 'H|') + q;
+    if (cache.has(key)) return cache.get(key);
+    if (ctrl) ctrl.abort();
+    ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 7000);
+    const p = new URLSearchParams({ q, limit: street ? '15' : '20' });
+    const c = await getCityCoord(getMyCity());
+    if (c) { p.set('lat', c[0]); p.set('lon', c[1]); p.set('zoom', '12'); p.set('location_bias_scale', '0.4'); }
+    if (street) p.append('osm_tag', 'highway');
+    try {
+      const r = await fetch('https://photon.komoot.io/api/?' + p.toString(), { signal: ctrl.signal });
+      const d = await r.json();
+      const feats = (d && d.features) ? d.features.map(f => f.properties || {}) : [];
+      cache.set(key, feats);
+      return feats;
+    } finally { clearTimeout(to); }
+  }
+  // «улица Ленина, 13к1» → { street: 'улица Ленина', num: '13к1' }
+  function parseTyped(text) {
+    let t = String(text || '');
+    const city = getMyCity();
+    if (city) t = t.replace(new RegExp('^\\s*(?:г\\.?\\s*)?' + city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*,?\\s*', 'i'), '');
+    t = t.replace(/^\s*(?:г\.?|город)\s+[^,]+,\s*/i, '');
+    const m = t.match(/^(.*?)[\s,]+(\d+[0-9a-zа-яё\/\-\.]*)\s*$/i);
+    if (m && m[1].trim().length >= 2) return { street: m[1].trim().replace(/[,\s]+$/, ''), num: m[2] };
+    return { street: t.trim().replace(/[,\s]+$/, ''), num: '' };
+  }
+  function render(items, el) {
+    if (!items.length) { hide(); return; }
+    box.innerHTML = items.map((it, i) => `<div class="as-item" data-i="${i}"><div class="as-main">${esc(it.main)}</div>${it.sub ? `<div class="as-sub">${esc(it.sub)}</div>` : ''}</div>`).join('');
+    box._items = items; box._el = el;
+    place(el);
+    box.style.display = 'block';
+  }
+  async function update(el) {
+    const my = ++seq;
+    const text = el.value;
+    const city = getMyCity(), cityN = norm(city);
+    const { street, num } = parseTyped(text);
+    if (street.length < 2) { hide(); return; }
+    try {
+      let items = [];
+      if (!num) {
+        // 1-й шаг: улицы
+        const feats = await photon(street + (city ? ' ' + city : ''), true);
+        if (my !== seq) return;
+        const seen = new Set();
+        // название улицы должно начинаться с набранных слов (иначе подсказывали бы чужие улицы)
+        const typedTokens = coreName(street).split(' ').filter(Boolean);
+        const relevant = p => { const nt = norm(p.name).split(' '); return typedTokens.every(t => nt.some(n => n.startsWith(t))); };
+        feats.filter(p => p.name && inCity(p, cityN) && relevant(p)).forEach(p => {
+          const k = norm(p.name);
+          if (seen.has(k)) return;
+          seen.add(k);
+          items.push({ main: p.name, sub: [p.district || p.city || '', p.postcode || ''].filter(Boolean).join(' · '), value: p.name + ', ' , kind: 'street' });
+        });
+        items = items.slice(0, 6);
+      } else {
+        // 2-й шаг: номера домов с корпусами и буквами
+        const feats = await photon(street + ' ' + num + (city ? ' ' + city : ''), false);
+        if (my !== seq) return;
+        const sc = coreName(street), nl = num.toLowerCase();
+        const seen = new Set();
+        feats.filter(p => p.housenumber && inCity(p, cityN)
+          && String(p.housenumber).toLowerCase().startsWith(nl)
+          && (!sc || coreName(p.street || p.name || '').includes(sc) || sc.includes(coreName(p.street || p.name || ''))))
+          .forEach(p => {
+            const hn = String(p.housenumber), k = hn.toLowerCase();
+            if (seen.has(k)) return;
+            seen.add(k);
+            const st = p.street || p.name || street;
+            items.push({ main: st + ', ' + hn, sub: [p.district || p.city || '', p.postcode || ''].filter(Boolean).join(' · '), value: st + ', ' + hn, kind: 'house', hn });
+          });
+        const natural = h => { const m = h.match(/^(\d+)(.*)$/); return [m ? parseInt(m[1], 10) : 0, m ? m[2] : h]; };
+        items.sort((a, b) => { const x = natural(a.hn), y = natural(b.hn); return x[0] - y[0] || x[1].localeCompare(y[1], 'ru'); });
+        items = items.slice(0, 8);
+      }
+      if (my !== seq || document.activeElement !== el) return;
+      render(items, el);
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+      hide();
+    }
+  }
+  function choose(i) {
+    const it = box._items && box._items[i], el = box._el;
+    if (!it || !el) return;
+    suppress = true;
+    el.value = it.value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));       // сохранит адрес и подгонит высоту поля
+    suppress = false;
+    try { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } catch (e) {}
+    vibro(8);
+    hide();
+    if (it.kind === 'street') {
+      // улица выбрана — сразу показываем клавиатуру для номера дома
+      try { el.focus(); } catch (e) {}
+    }
+  }
+
+  document.addEventListener('input', (e) => {
+    const el = e.target;
+    if (!el || !el.classList || !el.classList.contains('route-addr-input')) return;
+    if (suppress) return;
+    activeEl = el;
+    clearTimeout(timer);
+    timer = setTimeout(() => update(el), 300);
+  }, true);
+  // выбор подсказки: pointerdown, чтобы поле не потеряло фокус и клавиатура не закрылась
+  box.addEventListener('pointerdown', (e) => {
+    const it = e.target.closest('.as-item');
+    if (!it) return;
+    e.preventDefault();
+    choose(parseInt(it.dataset.i, 10));
+  });
+  document.addEventListener('focusout', (e) => {
+    if (e.target === activeEl) setTimeout(() => { if (document.activeElement !== activeEl) hide(); }, 150);
+  });
+  window.addEventListener('scroll', () => { if (box.style.display === 'block' && activeEl) place(activeEl); }, true);
+  window.addEventListener('resize', () => { if (box.style.display === 'block' && activeEl) place(activeEl); });
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', () => { if (box.style.display === 'block' && activeEl) place(activeEl); });
+  window.__addrSuggestUpdate = update;   // для проверки
+})();
 
 // Запуск дошёл до конца — страховка от белого экрана больше не нужна
 window.__appReady = true;
