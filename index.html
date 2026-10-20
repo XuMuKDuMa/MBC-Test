@@ -5138,6 +5138,10 @@ body.dark .status-menu::before {
   cursor: pointer;
 }
 .status-menu button:active { background: #f0f4f8; }
+.status-menu button[data-mtype] .sm-icon { background: rgba(120,120,128,.35); box-shadow: none; }
+.status-menu button[data-mtype].sm-cur .sm-icon { background: linear-gradient(135deg, #5dade2, #2471a3); box-shadow: 0 2px 6px rgba(36,113,163,.4); }
+.status-menu .sm-text { display: flex; flex-direction: column; align-items: flex-start; }
+.status-menu .sm-hint { font-size: 11px; font-weight: 600; opacity: .6; margin-top: 1px; white-space: normal; text-align: left; }
 .status-menu .sm-icon {
   width: 22px;
   height: 22px;
@@ -6271,6 +6275,7 @@ body.dark .route-list-title { background: linear-gradient(135deg, #46607a, #3449
 <style id="route-type-select">
 /* ─── Тип встречи: кнопка в стиле переключателя B2C / B2B ─── */
 .route-type-btn {
+  align-self: flex-start; width: auto;
   display: inline-flex; align-items: center; gap: 8px; max-width: 100%;
   margin-top: 8px; padding: 7px 14px;
   border: none; border-radius: 10px; color: #fff;
@@ -7761,7 +7766,9 @@ function openStatusMenu(anchor, item, timeId, mode) {
     // ─── Выбор типа встречи ───
     const cur = effectiveMtype(item);
     menu.innerHTML = (getMeetingTypes()[item.category || 'b2c'] || []).map(t => {
-      return `<button data-mtype="${t.id}"><span class="sm-icon">${t.id === cur ? '✓' : '○'}</span>${t.label}</button>`;
+      const hints = { fd_meet_02: 'в т.ч. детская без вериф., перевыпуск, стикер', fd_meet_035: 'детская с верификацией' };
+      const hint = hints[t.id] ? `<small class="sm-hint">${hints[t.id]}</small>` : '';
+      return `<button data-mtype="${t.id}"${t.id === cur ? ' class="sm-cur"' : ''}><span class="sm-icon">${t.id === cur ? '✓' : '○'}</span><span class="sm-text">${t.label}${hint}</span></button>`;
     }).join('');
   } else if (isLive) {
     // ─── Встреча в процессе: только «Удалить» (завершать — кнопкой «Завершить» на карточке) ───
@@ -10263,45 +10270,78 @@ function avgDayUpFromHistory() {
     return n > 0 ? { avg: sum / n, days: n } : null;
   } catch (e) { return null; }
 }
+// Встречи по карточкам «Активностей»: все, кроме отменённых — в том числе ещё не проведённые
+function plannedMeetingsCounts() {
+  const counts = {};
+  let cards = 0, done = 0;
+  try {
+    ROUTE_TIMES.forEach(t => (routeState.lists[t.id] || []).forEach(it => {
+      if (!it || it.status === 'perenos') return;
+      cards++;
+      if (it.status === 'done') done++;
+      const mid = effectiveMtype(it);
+      if (mid) counts[mid] = (counts[mid] || 0) + 1;
+    }));
+  } catch (e) {}
+  return { counts, cards, done };
+}
 function daySummaryHtml() {
   const f2 = v => (Math.round(v * 100) / 100).toFixed(2).replace('.', ',');
   const fdItems = SECTIONS1.find(x => x.title === 'Встречи').items;
   const bizItems = SECTIONS1.find(x => x.title === 'Бизнес').items;
-  const fd = fdItems.map(i => ({ name: i.name, n: num(getCount1(i.id)), up: i.up }));
-  const biz = bizItems.map(i => ({ name: i.name, n: num(getCount1(i.id)), up: i.up }));
-  biz.push({ name: 'ЗК', n: num(getZK1()), up: ZK_COEF });
+  const planned = plannedMeetingsCounts();
+  const usePlan = planned.cards > 0;                                   // есть карточки — считаем по ним
+  const cnt = id => usePlan ? (planned.counts[id] || 0) : num(getCount1(id));
+  const fd = fdItems.map(i => ({ name: i.name, n: cnt(i.id), up: i.up }));
+  const biz = bizItems.map(i => ({ name: i.name, n: cnt(i.id), up: i.up }));
+  biz.push({ name: 'ЗК', n: usePlan ? (planned.counts.zk || 0) : num(getZK1()), up: ZK_COEF });
   const fdN = fd.reduce((a, x) => a + x.n, 0), bizN = biz.reduce((a, x) => a + x.n, 0);
   const fdUp = fd.reduce((a, x) => a + x.n * x.up, 0), bizUp = biz.reduce((a, x) => a + x.n * x.up, 0);
   const meetUp = fdUp + bizUp;
+  const total = fdN + bizN;
+  // сколько УП по встречам уже реально засчитано (проведённые карточки / счётчики)
+  const doneUp = fdItems.reduce((a, i) => a + num(getCount1(i.id)) * i.up, 0) + bizItems.reduce((a, i) => a + num(getCount1(i.id)) * i.up, 0) + num(getZK1()) * ZK_COEF;
   const t = calcTotals1();
   const chip = x => `<span class="ds-chip${x.n ? ' on' : ''}">${x.name}<b>${x.n}</b></span>`;
   const row = (name, val, sub, color) => `<div class="ds-row"><div class="ds-name">${name}</div><div class="ds-val"${color ? ' style="color:' + color + '"' : ''}>${val}${sub ? '<small>' + sub + '</small>' : ''}</div></div>`;
 
   let html = `<div class="ds-title">📅 Сегодня · встречи и УП</div><div class="ds-body">`;
-  html += `<div class="ds-big"><div><span>${fdN + bizN}</span><small>встреч всего</small></div><div><span>${f2(meetUp)}</span><small>УП только по встречам</small></div></div>`;
+  html += `<div class="ds-big"><div><span>${total}</span><small>${usePlan ? 'встреч в плане' : 'встреч всего'}</small></div><div><span>${f2(meetUp)}</span><small>УП только по встречам</small></div></div>`;
   html += `<div class="ds-group"><div class="ds-gl">ФД · ${fdN}</div><div class="ds-chips">${fd.map(chip).join('')}</div></div>`;
   if (bizN > 0) html += `<div class="ds-group"><div class="ds-gl biz">B2B · ${bizN}</div><div class="ds-chips">${biz.map(chip).join('')}</div></div>`;
   html += row('УП без продаж (только встречи)', f2(meetUp), 'ФД ' + f2(fdUp) + (bizN > 0 ? ' · B2B ' + f2(bizUp) : ''));
+  if (usePlan) html += row('Уже проведено', planned.done + ' из ' + total, 'засчитано ' + f2(doneUp) + ' УП');
 
-  // ── подробности (сворачиваются): потенциал УП ФД и показатели дня ──
-  const sim = SECTIONS1.reduce((r, sec) => r || (sec.items || []).find(i => i.id === 'sim_my'), null);
-  const hist = avgUpFdPerMeeting();
-  let det = `<div class="ds-sep">🎯 Потенциал УП ФД (продажи)</div>`;
-  let potTxt = '';
+  // ── сценарии: что можно сделать, если на каждой ФД-встрече продавать ──
+  const findItem = id => SECTIONS1.reduce((r, sec) => r || (sec.items || []).find(i => i.id === id), null);
+  const sim = findItem('sim_my'), topup = findItem('sim_topup'), port = findItem('perenos_sim');
+  html += `<div class="ds-sep">🎯 Сколько УП можно сделать</div>`;
   if (fdN === 0) {
-    det += row('Добавь ФД-встречи', '—', 'тогда посчитаю, сколько УП можно сделать');
+    html += row('Добавь ФД-встречи', '—', 'отметь тип на карточке в «Активностях»');
+  } else if (sim && topup && port) {
+    const s1 = meetUp + fdN * sim.up;
+    const extra = fdN * (topup.up + port.up);
+    html += row('Только встречи', f2(meetUp), 'без продаж');
+    html += row('+ «Сим для своих» на каждой', f2(s1), fdN + ' × ' + f2(sim.up) + ' = +' + f2(fdN * sim.up), '#2471a3');
+    html += row('+ пополнение тарифа и перенос номера', f2(s1 + extra), 'ещё ' + fdN + ' × (' + f2(topup.up) + ' + ' + f2(port.up) + ') = +' + f2(extra), '#3949ab');
+  }
+
+  // ── подробности (сворачиваются): статистика и показатели дня ──
+  const hist = avgUpFdPerMeeting();
+  let det = '';
+  let potTxt = '';
+  det += `<div class="ds-sep">📈 По твоей статистике</div>`;
+  det += row('Продано сейчас', f2(t.upFD), 'УП ФД (продажи)');
+  if (fdN === 0) {
+    det += row('Потенциал', '—', 'нужны ФД-встречи');
+  } else if (hist) {
+    const pot = fdN * hist.avg;
+    potTxt = '≈ ' + f2(pot);
+    det += row('В среднем на ' + fdN + ' ФД-встреч', '≈ ' + f2(pot), f2(hist.avg) + ' УП ФД на встречу (за ' + hist.days + ' дн.)', '#3949ab');
+    const gap = pot - t.upFD;
+    det += row(gap > 0 ? 'До среднего не хватает' : 'Уже выше среднего', gap > 0 ? f2(gap) : '+' + f2(-gap), '', gap > 0 ? '#e67e22' : '#27ae60');
   } else {
-    det += row('Продано сейчас', f2(t.upFD), 'УП ФД');
-    if (sim) det += row('Только «' + sim.name + '»', f2(fdN * sim.up), fdN + ' × ' + f2(sim.up) + ' — минимум на каждой встрече');
-    if (hist) {
-      const pot = fdN * hist.avg;
-      potTxt = '≈ ' + f2(pot);
-      det += row('В среднем по твоей статистике', '≈ ' + f2(pot), f2(hist.avg) + ' УП ФД на встречу (за ' + hist.days + ' дн.)', '#3949ab');
-      const gap = pot - t.upFD;
-      det += row(gap > 0 ? 'До среднего не хватает' : 'Уже выше среднего', gap > 0 ? f2(gap) : '+' + f2(-gap), '', gap > 0 ? '#e67e22' : '#27ae60');
-    } else {
-      det += row('По твоей статистике', '—', 'пока нет прошлых дней с встречами');
-    }
+    det += row('По твоей статистике', '—', 'пока нет прошлых дней с встречами');
   }
   det += `<div class="ds-sep">📊 По дню</div>`;
   det += row('Всего УП сегодня', f2(t.up), 'ОД ' + t.od);
@@ -10310,7 +10350,7 @@ function daySummaryHtml() {
     const d = t.up - avgDay.avg;
     det += row('К среднему дню месяца', (d >= 0 ? '+' : '') + f2(d), 'в среднем ' + f2(avgDay.avg) + ' УП (за ' + avgDay.days + ' дн.)', d >= 0 ? '#27ae60' : '#e67e22');
   }
-  if (t.up > 0) det += row('Доля встреч в УП', Math.round(meetUp / t.up * 100) + '%', 'остальное — продажи');
+  if (t.up > 0) det += row('Доля встреч в УП', Math.round(doneUp / t.up * 100) + '%', 'остальное — продажи');
   const assigned = (t.b2cTotal || 0) + (t.b2bTotal || 0), doneM = (t.b2cDone || 0) + (t.b2bDone || 0);
   if (assigned > 0) det += row('Проведено / назначено', doneM + ' / ' + assigned, Math.round(doneM / assigned * 100) + '% TR');
   try {
@@ -10322,7 +10362,7 @@ function daySummaryHtml() {
   } catch (e) {}
 
   const open = !!window._dsMoreOpen;
-  const head = [potTxt ? '🎯 ФД ' + potTxt : '', '📊 УП ' + f2(t.up)].filter(Boolean).join(' · ');
+  const head = [potTxt ? '📈 по статистике ' + potTxt : '', '📊 УП ' + f2(t.up)].filter(Boolean).join(' · ');
   html += `<div class="ds-more"><span>Подробнее: ${head}</span><span class="ds-arrow" style="${open ? 'transform:rotate(180deg)' : ''}">▼</span></div>`;
   html += `<div class="ds-details" style="display:${open ? 'block' : 'none'}">${det}</div>`;
   html += `</div>`;
@@ -10876,6 +10916,7 @@ document.getElementById('routePointsModal')?.addEventListener('click', (e) => {
     const r = orig.apply(this, arguments);
     try { kmSchedule(); } catch (e) {}
     try { liveNotifSync(); } catch (e) {}
+    try { renderDaySummary1(); } catch (e) {}
     return r;
   };
 })();
