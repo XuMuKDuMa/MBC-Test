@@ -7780,7 +7780,7 @@ function openStatusMenu(anchor, item, timeId, mode) {
     // ─── Выбор типа встречи ───
     const cur = effectiveMtype(item);
     menu.innerHTML = (getMeetingTypes()[item.category || 'b2c'] || []).map(t => {
-      const hints = { fd_meet_02: 'в т.ч. детская без вериф., перевыпуск, стикер', fd_meet_035: 'детская с верификацией' };
+      const hints = { fd_meet_02: 'в т.ч. детская без вериф., перевыпуск, стикер, именная', fd_meet_035: 'детская с верификацией' };
       const hint = hints[t.id] ? `<small class="sm-hint">${hints[t.id]}</small>` : '';
       return `<button data-mtype="${t.id}"${t.id === cur ? ' class="sm-cur"' : ''}><span class="sm-icon">${t.id === cur ? '✓' : '○'}</span><span class="sm-text">${t.label}${hint}</span></button>`;
     }).join('');
@@ -9007,7 +9007,7 @@ const SECTIONS1 = [
   // ─── БИЗНЕС (фиолетовый) ───
   { title: 'Бизнес', color: 'sec-biz', items: [
     { id: 'biz_rko',  name: 'РКО',              up: 0.48, od: 0, type: 'biz' },
-    { id: 'biz_ip',   name: 'Идентификация ИП', up: 0.25, od: 0, type: 'biz' },
+    { id: 'biz_ip',   name: 'Идентификация ИП', up: 0.26, od: 0, type: 'biz' },
     { id: 'biz_card', name: 'Бизнес карта',     up: 0.20, od: 0, type: 'biz' },
   ]},
 
@@ -10321,24 +10321,25 @@ function daySummaryHtml() {
 
   let html = `<div class="ds-title">📅 Сегодня · встречи и УП</div><div class="ds-body">`;
   html += `<div class="ds-big"><div><span>${total}</span><small>${usePlan ? 'встреч в плане' : 'встреч всего'}</small></div><div><span>${f2(meetUp)}</span><small>УП только по встречам</small></div></div>`;
-  html += `<div class="ds-group"><div class="ds-gl">ФД · ${fdN}</div><div class="ds-chips">${fd.map(chip).join('')}</div></div>`;
+  html += `<div class="ds-group"><div class="ds-gl">B2C · ${fdN}</div><div class="ds-chips">${fd.map(chip).join('')}</div></div>`;
   if (bizN > 0) html += `<div class="ds-group"><div class="ds-gl biz">B2B · ${bizN}</div><div class="ds-chips">${biz.map(chip).join('')}</div></div>`;
-  html += row('УП без продаж (только встречи)', f2(meetUp), 'ФД ' + f2(fdUp) + (bizN > 0 ? ' · B2B ' + f2(bizUp) : ''));
+  html += row('УП без продаж (только встречи)', f2(meetUp), 'B2C ' + f2(fdUp) + (bizN > 0 ? ' · B2B ' + f2(bizUp) : ''));
   if (usePlan) html += row('Уже проведено', planned.done + ' из ' + total, 'засчитано ' + f2(doneUp) + ' УП');
 
   // ── сценарии: что можно сделать, если на каждой ФД-встрече продавать ──
   const findItem = id => SECTIONS1.reduce((r, sec) => r || (sec.items || []).find(i => i.id === id), null);
   const sim = findItem('sim_my'), topup = findItem('sim_topup'), port = findItem('perenos_sim');
-  html += `<div class="ds-sep">🎯 Сколько УП можно сделать</div>`;
+  html += `<div class="ds-sep">🎯 Сколько УП можно сделать <span style="font-weight:600;opacity:.7">· продажи только на B2C</span></div>`;
   if (fdN === 0) {
-    html += row('Добавь ФД-встречи', '—', 'отметь тип на карточке в «Активностях»');
+    html += row('Добавь B2C-встречи', '—', 'отметь тип на карточке в «Активностях»');
   } else if (sim && topup && port) {
     const s1 = meetUp + fdN * sim.up;
     const extra = fdN * (topup.up + port.up);
-    html += row('Только встречи', f2(meetUp), 'без продаж');
-    html += row('+ «Сим для своих» на каждой', f2(s1), fdN + ' × ' + f2(sim.up) + ' = +' + f2(fdN * sim.up), '#2471a3');
+    html += row('Только встречи', f2(meetUp), 'B2C ' + f2(fdUp) + (bizN > 0 ? ' · B2B ' + f2(bizUp) : ''));
+    html += row('+ «Сим для своих» на каждой B2C-встрече', f2(s1), fdN + ' × ' + f2(sim.up) + ' = +' + f2(fdN * sim.up), '#2471a3');
     html += row('+ пополнение тарифа и перенос номера', f2(s1 + extra), 'ещё ' + fdN + ' × (' + f2(topup.up) + ' + ' + f2(port.up) + ') = +' + f2(extra), '#3949ab');
   }
+  if (bizN > 0) html += row('B2B-встречи: ' + bizN, '+' + f2(bizUp), 'без продаж — только УП за встречу', '#7d3c98');
 
   // ── подробности (сворачиваются): статистика и показатели дня ──
   const hist = avgUpFdPerMeeting();
@@ -10347,11 +10348,11 @@ function daySummaryHtml() {
   det += `<div class="ds-sep">📈 По твоей статистике</div>`;
   det += row('Продано сейчас', f2(t.upFD), 'УП ФД (продажи)');
   if (fdN === 0) {
-    det += row('Потенциал', '—', 'нужны ФД-встречи');
+    det += row('Потенциал', '—', 'нужны B2C-встречи');
   } else if (hist) {
     const pot = fdN * hist.avg;
     potTxt = '≈ ' + f2(pot);
-    det += row('В среднем на ' + fdN + ' ФД-встреч', '≈ ' + f2(pot), f2(hist.avg) + ' УП ФД на встречу (за ' + hist.days + ' дн.)', '#3949ab');
+    det += row('В среднем на ' + fdN + ' B2C-встреч', '≈ ' + f2(pot), f2(hist.avg) + ' УП ФД на встречу (за ' + hist.days + ' дн.)', '#3949ab');
     const gap = pot - t.upFD;
     det += row(gap > 0 ? 'До среднего не хватает' : 'Уже выше среднего', gap > 0 ? f2(gap) : '+' + f2(-gap), '', gap > 0 ? '#e67e22' : '#27ae60');
   } else {
@@ -10971,7 +10972,7 @@ document.getElementById('btnBootLog')?.addEventListener('click', async () => {
       swInfo += '\n   кэши: ' + ((await caches.keys()).join(', ') || 'нет');
     }
   } catch (e) { swInfo = 'ошибка: ' + (e && e.message); }
-  { const dg = window.__addrDiag; lines.push('', 'Подсказки адреса: ' + (dg ? ((dg.street ? 'улицы' : 'дома') + ' · «' + dg.q + '» · ' + dg.src + ' · найдено ' + dg.n + (dg.err ? ' · ошибка: ' + dg.err : '')) : 'пока не запускались')); }
+  { const dg = window.__addrDiag; lines.push('', 'Подсказки адреса: ' + (dg ? ((dg.street ? 'улицы' : 'дома') + ' · «' + dg.q + '» · ' + dg.src + ' · найдено ' + dg.n + (dg.err ? ' · ошибка: ' + dg.err : '') + (dg.drop ? ' · показано ' + dg.shown + ' (отсеяно: город ' + dg.drop.city + ', улица ' + dg.drop.street + ', номер ' + dg.drop.num + ')' : '')) : 'пока не запускались')); }
   lines.push('', 'Воркер сейчас: ' + swInfo + (window.__swTakeover ? '\n   (воркер сборщика заменён на свой)' : ''));
   lines.push('', '— Что отдавал воркер —');
   if (!swl.length) lines.push('пока пусто');
@@ -15310,7 +15311,8 @@ window.addEventListener('focus', runAllTimeChecksNow);
   let activeEl = null, timer = null, ctrl = null, seq = 0, suppress = false, cityCoord = null, cityCoordFor = '';
   const cache = new Map();
 
-  const norm = v => String(v || '').toLowerCase().replace(/ё/g, 'е').replace(/[.,]/g, ' ').replace(/\s+/g, ' ').trim();
+  const LAT2CYR = { a: 'а', c: 'с', e: 'е', o: 'о', p: 'р', x: 'х', k: 'к', m: 'м', t: 'т', b: 'в', h: 'н' };
+  const norm = v => String(v || '').toLowerCase().replace(/ё/g, 'е').replace(/[acepoxkmtbh]/g, ch => LAT2CYR[ch]).replace(/[.,]/g, ' ').replace(/\s+/g, ' ').trim();
   // убираем «улица / ул. / проспект …», чтобы сравнивать только название
   const coreName = v => norm(v).replace(/\b(улица|ул|проспект|пр-т|пр|переулок|пер|проезд|бульвар|б-р|шоссе|набережная|наб|площадь|пл|аллея|тупик|микрорайон|мкр)\b/g, '').replace(/\s+/g, ' ').trim();
   const esc = v => String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -15328,7 +15330,14 @@ window.addEventListener('focus', runAllTimeChecksNow);
   }
   function inCity(p, cityN) {
     if (!cityN) return true;
-    return [p.city, p.town, p.village, p.locality, p.district, p.county, p.state_district].some(v => v && norm(v).includes(cityN));
+    const fields = [p.city, p.town, p.village, p.locality, p.district, p.county, p.state_district].filter(Boolean);
+    if (!fields.length) return true;                       // нет данных о городе — не считаем чужим
+    return fields.some(v => norm(v).includes(cityN));
+  }
+  // название улицы: каждое набранное слово — начало какого-то слова в названии из карты
+  function streetMatch(typedCore, featName) {
+    const tt = typedCore.split(' ').filter(Boolean), nt = coreName(featName).split(' ').filter(Boolean);
+    return !tt.length || tt.every(t => nt.some(n => n.startsWith(t) || t.startsWith(n)));
   }
   async function getCityCoord(city) {
     if (!city) return null;
@@ -15407,18 +15416,22 @@ window.addEventListener('focus', runAllTimeChecksNow);
     const city = getMyCity(), cityN = norm(city);
     const { street, num } = parseTyped(text);
     if (street.length < 2) { hide(); return; }
-    note(el, 'Ищу' + (city ? ' в «' + city + '»' : '') + '…');
+    // «Ищу…» показываем только если ответ задерживается (иначе мигает на каждой букве)
+    clearTimeout(box._noteTimer);
+    if (box.style.display !== 'block') box._noteTimer = setTimeout(() => { if (my === seq) note(el, 'Ищу' + (city ? ' в «' + city + '»' : '') + '…'); }, 600);
     try {
       let items = [];
       let feats;
+      const drop = { city: 0, num: 0, street: 0 };
       if (!num) {
         // 1-й шаг: улицы. Город — в начало запроса: недописанным считается последнее слово
         feats = await getFeats((city ? city + ' ' : '') + street, true);
         if (my !== seq) return;
         const seen = new Set();
-        const typedTokens = coreName(street).split(' ').filter(Boolean);
-        const relevant = p => { const nt = norm(p.name).split(' '); return typedTokens.every(t => nt.some(n => n.startsWith(t))); };
-        feats.filter(p => p.name && inCity(p, cityN) && relevant(p)).forEach(p => {
+        const typedCore = coreName(street);
+        feats.filter(p => p.name).forEach(p => {
+          if (!inCity(p, cityN)) { drop.city++; return; }
+          if (!streetMatch(typedCore, p.name)) { drop.street++; return; }
           const k = norm(p.name);
           if (seen.has(k)) return;
           seen.add(k);
@@ -15429,28 +15442,39 @@ window.addEventListener('focus', runAllTimeChecksNow);
         // 2-й шаг: номера домов с корпусами и буквами
         feats = await getFeats((city ? city + ' ' : '') + street + ' ' + num, false);
         if (my !== seq) return;
-        const sc = coreName(street), nl = num.toLowerCase();
+        const typedCore = coreName(street), nl = norm(num);
         const seen = new Set();
-        feats.filter(p => p.housenumber && inCity(p, cityN)
-          && String(p.housenumber).toLowerCase().startsWith(nl)
-          && (!sc || coreName(p.street || p.name || '').includes(sc) || sc.includes(coreName(p.street || p.name || ''))))
-          .forEach(p => {
-            const hn = String(p.housenumber), k = hn.toLowerCase();
-            if (seen.has(k)) return;
-            seen.add(k);
-            const st = p.street || p.name || street;
-            items.push({ main: st + ', ' + hn, sub: [p.district || p.city || '', p.postcode || ''].filter(Boolean).join(' · '), value: st + ', ' + hn, kind: 'house', hn });
-          });
+        let canon = '';                                       // как улица называется в карте
+        feats.forEach(p => {
+          const stName = p.street || p.name || '';
+          if (!inCity(p, cityN)) { drop.city++; return; }
+          if (!streetMatch(typedCore, stName)) { drop.street++; return; }
+          if (!canon && stName) canon = stName;
+          if (!p.housenumber) return;
+          const hn = String(p.housenumber);
+          if (!norm(hn).startsWith(nl)) { drop.num++; return; }
+          const k = norm(hn);
+          if (seen.has(k)) return;
+          seen.add(k);
+          items.push({ main: stName + ', ' + hn, sub: [p.district || p.city || '', p.postcode || ''].filter(Boolean).join(' · '), value: stName + ', ' + hn, kind: 'house', hn });
+        });
         const natural = h => { const m = h.match(/^(\d+)(.*)$/); return [m ? parseInt(m[1], 10) : 0, m ? m[2] : h]; };
         items.sort((a, b) => { const x = natural(a.hn), y = natural(b.hn); return x[0] - y[0] || x[1].localeCompare(y[1], 'ru'); });
         items = items.slice(0, 8);
+        // улица в карте есть, а такого дома нет — предлагаем вставить как введено, но с правильным названием улицы
+        if (!items.length && canon) items.push({ main: canon + ', ' + num, sub: 'дома нет в данных карты — вставить как есть', value: canon + ', ' + num, kind: 'house', hn: num });
       }
+      clearTimeout(box._noteTimer);
+      if (window.__addrDiag) { window.__addrDiag.shown = items.length; window.__addrDiag.drop = drop; }
       if (my !== seq || document.activeElement !== el) return;
       if (items.length) { render(items, el); return; }
       const dg = window.__addrDiag || {};
-      if (dg.err && !feats.length) note(el, 'Нет связи с сервисом подсказок — введи адрес вручную');
-      else note(el, num ? 'Дом «' + num + '» на этой улице не найден — введи вручную' : 'Улица не найдена' + (city ? ' в «' + city + '»' : '') + ' — введи вручную');
+      if (dg.err && !feats.length) { note(el, 'Нет связи с сервисом подсказок — введи адрес вручную'); return; }
+      // пока слово короткое — человек ещё печатает: молча прячем, без «не найдено»
+      if (!num && street.length < 5) { hide(); return; }
+      note(el, num ? 'Дом «' + num + '» не найден в данных карты — введи вручную' : 'Улица не найдена' + (city ? ' в «' + city + '»' : '') + ' — введи вручную');
     } catch (e) {
+      clearTimeout(box._noteTimer);
       if (e && e.name === 'AbortError') return;
       if (my === seq) note(el, 'Нет связи с сервисом подсказок — введи адрес вручную');
     }
