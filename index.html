@@ -6238,20 +6238,6 @@ body.dark .ds-gl { color: #6db3e8; }
 body.dark .ds-gl.biz { color: #c39bd3; }
 body.dark .ds-chip.on { background: rgba(52,152,219,.28); }
 </style>
-<style id="addr-suggest-style">
-#addrSuggest {
-  position: fixed; z-index: 99990; display: none; overflow-y: auto; -webkit-overflow-scrolling: touch;
-  background: rgba(255,255,255,.97); color: #1c2733; border-radius: 14px;
-  box-shadow: 0 10px 34px rgba(0,0,0,.28), inset 0 0 0 .5px rgba(0,0,0,.08);
-}
-#addrSuggest .as-item { padding: 10px 14px; border-bottom: 1px solid rgba(120,120,128,.18); cursor: pointer; -webkit-tap-highlight-color: transparent; }
-#addrSuggest .as-item:last-child { border-bottom: none; }
-#addrSuggest .as-item:active { background: rgba(10,132,255,.14); }
-#addrSuggest .as-note { padding: 12px 14px; font-size: 13px; font-weight: 600; opacity: .7; }
-#addrSuggest .as-main { font-size: 15px; font-weight: 700; line-height: 1.25; }
-#addrSuggest .as-sub { font-size: 12px; opacity: .6; margin-top: 2px; }
-body.dark #addrSuggest { background: rgba(44,50,60,.97); color: #eef2f7; box-shadow: 0 10px 34px rgba(0,0,0,.6), inset 0 0 0 .5px rgba(255,255,255,.12); }
-</style>
 <style id="route-list-title-style">
 .route-list-title {
   display: flex; align-items: center; justify-content: space-between;
@@ -6302,6 +6288,39 @@ body.dark .route-list-title { background: linear-gradient(135deg, #46607a, #3449
 .route-type-btn .rtb-arrow { font-size: 11px; opacity: .85; }
 .route-type-btn:active { transform: scale(.94); }
 </style>
+
+<style>
+/* Автоподсказки улиц в карточке адреса */
+.route-addr-wrap { position: relative; }
+.mvs-street-suggest {
+  /* Подсказки открываются НАД полем адреса, чтобы не перекрывать следующие поля. */
+  position: absolute; left: 0; right: 0; top: auto; bottom: calc(100% + 5px);
+  z-index: 1500; max-height: min(300px, 42vh); overflow-y: auto; overflow-x: hidden;
+  overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin; scrollbar-color: #aab8c2 #f1f4f6;
+  border: 1px solid #d9e2e8; border-radius: 10px;
+  background: #fff; box-shadow: 0 -8px 24px rgba(20,35,50,.18);
+}
+.mvs-street-suggest::-webkit-scrollbar { width: 7px; }
+.mvs-street-suggest::-webkit-scrollbar-track { background: #f1f4f6; border-radius: 8px; }
+.mvs-street-suggest::-webkit-scrollbar-thumb { background: #aab8c2; border-radius: 8px; }
+.mvs-street-option { flex-shrink: 0; }
+.mvs-street-suggest[hidden] { display: none !important; }
+.mvs-street-option {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  width: 100%; padding: 10px 12px; border: 0; border-bottom: 1px solid #edf0f2;
+  background: transparent; color: #263944; text-align: left; font: inherit; cursor: pointer;
+}
+.mvs-street-option:last-child { border-bottom: 0; }
+.mvs-street-option:active { background: #eaf4fb; }
+.mvs-street-main { font-size: 14px; font-weight: 700; }
+.mvs-street-option small { font-size: 11px; color: #7b8992; }
+body.dark .mvs-street-suggest { background: #1c2733; border-color: #3a4a5a; scrollbar-color: #526575 #1c2733; }
+body.dark .mvs-street-option { color: #e8eef5; border-bottom-color: #2c3a48; }
+body.dark .mvs-street-option:active { background: #2c3a48; }
+body.dark .mvs-street-option small { color: #9fb0bc; }
+</style>
+
 </head>
 <body class="tab-4">
 
@@ -6438,6 +6457,7 @@ body.dark .route-list-title { background: linear-gradient(135deg, #46607a, #3449
   <button id="btnOpenRoutePoints" style="color:#00897b;">🚗 Начальная и конечная точка</button>
   <button id="btnOpenFuel" style="color:#e67e22;">⛽ Расход бензина</button>
   <button id="btnOpenMaxGroups" style="color:#6c5ce7;">💬 Группы в MAX</button>
+  <button id="btnDadataKey" style="color:#d35400;">🔑 Ключ DaData (подсказки адресов)</button>
   <button id="btnTestNotif" style="color:#16a085;">🔔 Проверить уведомление</button>
   <button id="btnCheckVpn" style="color:#2980b9;">🛡 Проверить VPN</button>
   <button id="btnBootLog" style="color:#7f8c8d;">🧪 Диагностика запуска</button>
@@ -6587,6 +6607,21 @@ body.dark .route-list-title { background: linear-gradient(135deg, #46607a, #3449
     </div>
 
     <button id="cityModalCancel" style="width:100%;margin-top:8px;padding:12px;border:none;border-radius:10px;background:#ecf0f1;color:#2c3e50;font-size:14px;font-weight:600;cursor:pointer;">Закрыть</button>
+  </div>
+</div>
+<!-- Модалка ключа DaData -->
+<div class="modal-overlay" id="dadataModal">
+  <div class="modal" style="max-width: 360px;">
+    <div class="emoji">🔑</div>
+    <h2 style="color:#d35400;">Ключ DaData</h2>
+    <p style="color:#666;margin-bottom:12px;font-size:13px;line-height:1.5;">
+      Подсказки улиц и домов (с корпусами и буквами) по твоему городу. Вставь <b>API-ключ</b> из личного кабинета DaData: раздел «Ключи», поле «API-ключ». <b>Секретный ключ сюда не вставляй.</b> Ключ хранится только в этом телефоне.
+    </p>
+    <input type="text" id="ddKeyInput" class="quick-input" placeholder="API-ключ DaData" autocomplete="off" autocapitalize="off" spellcheck="false" style="font-family:monospace;font-size:13px;">
+    <div id="ddKeyStatus" style="min-height:20px;margin:8px 0 12px;font-size:13px;font-weight:600;text-align:left;"></div>
+    <button id="ddKeySave" style="width:100%;padding:13px;border:none;border-radius:10px;background:#d35400;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">✓ Сохранить и проверить</button>
+    <button id="ddKeyDel" style="width:100%;margin-top:8px;padding:12px;border:none;border-radius:10px;background:#fdecec;color:#c0392b;font-size:14px;font-weight:600;cursor:pointer;">🗑 Удалить ключ</button>
+    <button id="ddKeyClose" style="width:100%;margin-top:8px;padding:12px;border:none;border-radius:10px;background:#ecf0f1;color:#2c3e50;font-size:14px;font-weight:600;cursor:pointer;">Закрыть</button>
   </div>
 </div>
 <!-- Модалка групп в MAX -->
@@ -8139,6 +8174,335 @@ btnMic.addEventListener('click', (e) => {
   }
 });
 btnMic.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+
+// ─── Автоподсказки адресов: улицы и номера домов ───
+let streetSuggest = document.getElementById('mvsStreetSuggest');
+if (!streetSuggest) {                       // список один на всё приложение, а не новый при каждой перерисовке карточки
+  streetSuggest = document.createElement('div');
+  streetSuggest.id = 'mvsStreetSuggest';
+  streetSuggest.className = 'mvs-street-suggest';
+  streetSuggest.setAttribute('role', 'listbox');
+  streetSuggest.hidden = true;
+  streetSuggest.style.position = 'fixed';
+  streetSuggest.style.left = '0px';
+  streetSuggest.style.right = 'auto';
+  streetSuggest.style.top = '0px';
+  streetSuggest.style.bottom = 'auto';
+  streetSuggest.style.zIndex = '2147483000';
+  document.body.appendChild(streetSuggest);
+}
+
+function positionStreetSuggest() {
+  if (streetSuggest.hidden || !addrInput.isConnected) return;
+  const r = addrInput.getBoundingClientRect();
+  const left = Math.max(8, Math.min(r.left, window.innerWidth - 220));
+  const availableAbove = Math.max(70, r.top - 12);
+  streetSuggest.style.left = left + 'px';
+  streetSuggest.style.width = Math.max(200, Math.min(r.width, window.innerWidth - left - 8)) + 'px';
+  streetSuggest.style.maxHeight = Math.max(70, Math.min(300, Math.round(window.innerHeight * 0.42), availableAbove)) + 'px';
+  streetSuggest.style.top = 'auto';
+  streetSuggest.style.bottom = Math.max(8, window.innerHeight - r.top + 5) + 'px';
+}
+window.__mvsPos = positionStreetSuggest;
+if (!window.__mvsPosBound) {
+  window.__mvsPosBound = true;
+  window.addEventListener('resize', () => { if (window.__mvsPos) window.__mvsPos(); });
+  window.addEventListener('scroll', () => { if (window.__mvsPos) window.__mvsPos(); }, true);
+}
+
+let streetSuggestTimer = null;
+let streetSuggestAbort = null;
+let streetSuggestSeq = 0;
+
+function closeStreetSuggest() {
+  streetSuggest.hidden = true;
+  streetSuggest.style.display = 'none';
+  streetSuggest.innerHTML = '';
+}
+function normalizeStreetText(value) {
+  return String(value || '').toLocaleLowerCase('ru-RU')
+    .replace(/ё/g, 'е')
+    .replace(/(?:^|\s)(?:россия|российская федерация|московская область|московская обл|город|г\.?|улица|ул\.?|бульвар|бул\.?|проспект|пр-т|переулок|пер\.?|шоссе|площадь|дом|д\.?)(?=\s|$)/gi, ' ')
+    .replace(/[.,]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function streetFromResult(result) {
+  const a = result.address || {};
+  const p = result.properties || {};
+  const name = String(p.name || '');
+  const direct = a.road || a.pedestrian || a.residential || a.footway || a.path ||
+    a.cycleway || a.street || p.street;
+  if (direct) return String(direct).trim();
+  // Не принимаем названия кафе, магазинов и прочих POI за улицы.
+  const streetType = String(p.osm_key || '').toLowerCase() === 'highway' ||
+    /^(street|road|path|pedestrian|residential|living_street|boulevard|unclassified|tertiary|secondary|primary)$/i
+      .test(String(p.type || p.osm_value || ''));
+  return streetType && name && !/^\d+[а-яa-z]?(?:\/\d+)?$/i.test(name) ? name.trim() : '';
+}
+function houseFromResult(result) {
+  const a = result.address || {};
+  const p = result.properties || {};
+  return String(a.house_number || a.housenumber || p.housenumber || p.house_number ||
+    (/^\d+[а-яa-z]?(?:\/\d+)?$/i.test(String(p.name || '')) ? p.name : '') || '').trim();
+}
+function resultCoords(result) {
+  if (Array.isArray(result.geometry?.coordinates) && result.geometry.coordinates.length >= 2) {
+    return [+result.geometry.coordinates[1], +result.geometry.coordinates[0]];
+  }
+  if (result.lat != null && result.lon != null) return [+result.lat, +result.lon];
+  return null;
+}
+function resultIsNearKrasnogorsk(result) {
+  const a = result.address || {};
+  const p = result.properties || {};
+  const locality = [
+    a.city, a.town, a.village, a.suburb, a.municipality, a.county, a.state_district,
+    p.city, p.town, p.village, p.district, p.county
+  ].filter(Boolean).join(' ').toLocaleLowerCase('ru-RU');
+  const coords = resultCoords(result);
+
+  // География проверяется для обоих форматов ответа: Photon и Nominatim.
+  if (coords && Number.isFinite(coords[0]) && Number.isFinite(coords[1])) {
+    const [lat, lon] = coords;
+    const dx = (lon - 37.330) * 75;
+    const dy = (lat - 55.831) * 111;
+    if (Math.sqrt(dx * dx + dy * dy) > 18) return false;
+  } else if (locality && !/красногорск/i.test(locality)) {
+    return false;
+  }
+
+  if (locality && /(москва|moscow|химки|khimki|одинцово|odintsovo|истрин|зеленоград|митин|тушин)/i.test(locality)
+      && !/красногорск/i.test(locality)) return false;
+
+  const country = String(a.country || p.country || '').toLocaleLowerCase('ru-RU');
+  if (country && !/росси|russia/i.test(country)) return false;
+  return true;
+}
+function parseStreetInput(value) {
+  let trimmed = String(value || '').trim();
+  // Поддерживаем «Красногорск, ул. Ленина, д. 5», «г. Красногорск Ленина 5А» и обычный ввод.
+  trimmed = trimmed
+    .replace(/^\s*(?:россия\s*,?\s*)?(?:московская\s+область\s*,?\s*)?/i, '')
+    .replace(/^\s*(?:г\.?\s*)?красногорск(?=\s|[,;:]|$)\s*[,;:]?\s*/i, '')
+    .replace(/^\s*(?:город\s+)?красногорск(?=\s|[,;:]|$)\s*[,;:]?\s*/i, '');
+  const m = trimmed.match(/^(.*?)(?:[,\s]+|\s+д\.?\s*)(?:д\.?\s*)?(\d+[а-яА-Яa-zA-Z]?(?:\/\d+)?(?:\s*корп\.?\s*\d+[а-яА-Яa-zA-Z]?)?)\s*$/i);
+  if (m && m[1].trim()) {
+    const street = m[1].trim().replace(/[,;\s]+$/g, '');
+    return { street, house: m[2].replace(/\s+/g, '').trim() };
+  }
+  return { street: trimmed, house: '' };
+}
+function isRelevantStreetResult(result, typedStreet, searchingHouse, typedHouse) {
+  if (!resultIsNearKrasnogorsk(result)) return false;
+  const street = streetFromResult(result);
+  if (!street) return false;
+  const needle = normalizeStreetText(typedStreet);
+  const normalized = normalizeStreetText(street);
+  if (needle && !(normalized.startsWith(needle) || normalized.includes(needle))) return false;
+  if (searchingHouse) {
+    const house = houseFromResult(result).toLocaleLowerCase('ru-RU').replace(/ё/g, 'е');
+    const houseNeedle = String(typedHouse || '').toLocaleLowerCase('ru-RU').replace(/ё/g, 'е');
+    if (!house || !house.startsWith(houseNeedle)) return false;
+    if (needle && !normalized.includes(needle)) return false;
+  }
+  return true;
+}
+function appendSuggestionOption(label, area) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'mvs-street-option';
+  button.setAttribute('role', 'option');
+  const main = document.createElement('span');
+  main.className = 'mvs-street-main';
+  main.textContent = label;
+  button.appendChild(main);
+  if (area) {
+    const sub = document.createElement('small');
+    sub.textContent = area;
+    button.appendChild(sub);
+  }
+  button.addEventListener('pointerdown', ev => ev.preventDefault());
+  button.addEventListener('click', () => {
+    item.addr = label;
+    addrInput.value = label;
+    saveRouteState(routeState);
+    autoGrow(addrInput);
+    _mapHash = '';
+    closeStreetSuggest();
+    addrInput.focus();
+    try { addrInput.setSelectionRange(addrInput.value.length, addrInput.value.length); } catch (_) {}
+  });
+  streetSuggest.appendChild(button);
+}
+// Ответ DaData уже по нужному городу и без дублей — показываем как есть
+function mvsRenderDadata(rows, seq) {
+  if (seq !== streetSuggestSeq || document.activeElement !== addrInput) return;
+  streetSuggest.innerHTML = '';
+  rows.forEach(r => appendSuggestionOption(r.label, r.area));
+  streetSuggest.hidden = streetSuggest.childElementCount === 0;
+  streetSuggest.style.display = streetSuggest.hidden ? 'none' : 'block';
+  if (!streetSuggest.hidden) requestAnimationFrame(positionStreetSuggest);
+}
+function showStreetSuggestions(items, searchingHouse, typedStreet, typedHouse) {
+  streetSuggest.innerHTML = '';
+  const unique = new Set();
+  const needle = normalizeStreetText(typedStreet);
+  const filtered = items.filter(r => isRelevantStreetResult(r, typedStreet, searchingHouse, typedHouse));
+  filtered.sort((a, b) => {
+    const sa = normalizeStreetText(streetFromResult(a)), sb = normalizeStreetText(streetFromResult(b));
+    const ea = sa.startsWith(needle) ? 0 : 1, eb = sb.startsWith(needle) ? 0 : 1;
+    if (ea !== eb) return ea - eb;
+    return (streetFromResult(a) + ' ' + houseFromResult(a)).localeCompare(
+      streetFromResult(b) + ' ' + houseFromResult(b), 'ru', { numeric: true, sensitivity: 'base' });
+  });
+
+  filtered.forEach(result => {
+    const street = streetFromResult(result);
+    const house = houseFromResult(result);
+    const label = searchingHouse ? [street, house].filter(Boolean).join(', ') : street;
+    if (!label) return;
+    const key = label.toLocaleLowerCase('ru-RU').replace(/ё/g, 'е');
+    if (unique.has(key)) return;
+    unique.add(key);
+
+    const a = result.address || {};
+    const p = result.properties || {};
+    const area = a.city || a.town || a.village || a.suburb || a.municipality ||
+      p.city || p.town || p.village || p.district || '';
+    appendSuggestionOption(label, area);
+  });
+
+  streetSuggest.hidden = streetSuggest.childElementCount === 0;
+  streetSuggest.style.display = streetSuggest.hidden ? 'none' : 'block';
+  if (!streetSuggest.hidden) requestAnimationFrame(positionStreetSuggest);
+}
+
+// Короткий кеш уменьшает повторные запросы при исправлении адреса.
+const mvsAddressSearchCache = new Map();
+async function mvsFetchJson(url, signal, timeoutMs = 4200) {
+  const controller = new AbortController();
+  const abortFromParent = () => controller.abort();
+  if (signal) {
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener('abort', abortFromParent, { once: true });
+  }
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal, headers: { 'Accept': 'application/json' } });
+    if (!response.ok) return null;
+    return await response.json();
+  } finally {
+    clearTimeout(timeout);
+    if (signal) signal.removeEventListener('abort', abortFromParent);
+  }
+}
+async function mvsPhotonQuery(q, signal, limit = 25) {
+  const key = 'p:' + q.toLocaleLowerCase('ru-RU');
+  const cached = mvsAddressSearchCache.get(key);
+  if (cached && Date.now() - cached.time < 120000) return cached.data;
+  const url = 'https://photon.komoot.io/api/?' + new URLSearchParams({
+    q, limit: String(limit), lang: 'ru', lat: '55.831', lon: '37.330'
+  });
+  const data = await mvsFetchJson(url, signal, 4200);
+  const rows = Array.isArray(data?.features) ? data.features : [];
+  if (rows.length) {
+    mvsAddressSearchCache.set(key, { time: Date.now(), data: rows });
+    if (mvsAddressSearchCache.size > 80) mvsAddressSearchCache.delete(mvsAddressSearchCache.keys().next().value);
+  }
+  return rows;
+}
+function mvsRenderMergedAddressResults(results, searchingHouse, typedStreet, typedHouse, seq) {
+  if (seq !== streetSuggestSeq || document.activeElement !== addrInput) return;
+  const merged = [];
+  const seen = new Set();
+  results.forEach(r => {
+    if (!isRelevantStreetResult(r, typedStreet, searchingHouse, typedHouse)) return;
+    const coords = resultCoords(r);
+    const key = [streetFromResult(r), houseFromResult(r), coords ? coords.join(',') : '']
+      .join('|').toLocaleLowerCase('ru-RU');
+    if (!seen.has(key)) { seen.add(key); merged.push(r); }
+  });
+  showStreetSuggestions(merged, searchingHouse, typedStreet, typedHouse);
+  if (!merged.length) closeStreetSuggest();
+}
+addrInput.addEventListener('input', () => {
+  window.__mvsPos = positionStreetSuggest;   // позиционируем под тем полем, где сейчас печатают
+  clearTimeout(streetSuggestTimer);
+  const seq = ++streetSuggestSeq;
+  if (streetSuggestAbort) streetSuggestAbort.abort();
+  const typed = addrInput.value.trim();
+  const parsed = parseStreetInput(typed);
+  const typedStreet = parsed.street;
+  const typedHouse = parsed.house;
+  if (normalizeStreetText(typedStreet).length < 2) { closeStreetSuggest(); return; }
+
+  // Не ждём медленный резервный сервис: сначала показываем быстрый ответ Photon.
+  streetSuggestTimer = setTimeout(async () => {
+    const controller = new AbortController();
+    streetSuggestAbort = controller;
+    const searchingHouse = !!typedHouse;
+    const city = getMyCity() || 'Красногорск';
+    const results = [];
+    try {
+      // 1) DaData (если задан ключ). Нет ключа / ошибка / ничего не нашёл — идём дальше к запасному поиску
+      let dd = null;
+      try { dd = await mvsDadataSuggest(typedStreet, typedHouse, controller.signal); }
+      catch (e) { if (controller.signal.aborted || seq !== streetSuggestSeq) return; dd = null; }
+      if (seq !== streetSuggestSeq) return;
+      if (dd && dd.length) { mvsRenderDadata(dd, seq); return; }
+
+      const primaryQuery = searchingHouse ? (typedStreet + ' ' + typedHouse) : typedStreet;
+      // Если основной сервис недоступен (обрыв, блокировка) — не падаем, а идём к резервному
+      let primary = [];
+      try { primary = await mvsPhotonQuery(primaryQuery, controller.signal, searchingHouse ? 35 : 25); }
+      catch (e) { if (controller.signal.aborted || seq !== streetSuggestSeq) return; primary = []; }
+      if (seq !== streetSuggestSeq) return;
+      results.push(...primary);
+      mvsRenderMergedAddressResults(results, searchingHouse, typedStreet, typedHouse, seq);
+
+      // Дополнительные запросы для 5А/5Б выполняются в фоне и не задерживают первый список.
+      const suffixQueries = searchingHouse && /^\d+$/.test(typedHouse)
+        ? ['а', 'б', 'в', 'г', 'д', 'A', 'B'].map(suffix => typedStreet + ' ' + typedHouse + suffix)
+        : [];
+      const needNominatim = () => {
+        const relevant = results.filter(r => isRelevantStreetResult(r, typedStreet, searchingHouse, typedHouse));
+        const hasLetterVariant = relevant.some(r => {
+          const h = houseFromResult(r).toLocaleLowerCase('ru-RU').replace(/ё/g, 'е');
+          const n = String(typedHouse).toLocaleLowerCase('ru-RU').replace(/ё/g, 'е');
+          return h.startsWith(n) && h.length > n.length;
+        });
+        return relevant.length === 0 || (searchingHouse && /^\d+$/.test(typedHouse) && !hasLetterVariant);
+      };
+
+      const backgroundJobs = suffixQueries.map(q => mvsPhotonQuery(q, controller.signal, 15).catch(() => []));
+      // Nominatim — только как резерв, с ограничением времени, чтобы он не блокировал интерфейс.
+      if (needNominatim()) {
+        const nominatimUrl = 'https://nominatim.openstreetmap.org/search?' + new URLSearchParams({
+          q: [typedStreet, ...(searchingHouse ? [typedHouse] : []), city, 'Московская область', 'Россия'].filter(Boolean).join(' '),
+          format: 'jsonv2', addressdetails: '1', limit: '35', countrycodes: 'ru', 'accept-language': 'ru',
+          viewbox: '37.20,55.92,37.48,55.73', bounded: '1'
+        });
+        backgroundJobs.push(mvsFetchJson(nominatimUrl, controller.signal, 3200).then(rows => Array.isArray(rows) ? rows : []).catch(() => []));
+      }
+      if (backgroundJobs.length) {
+        const extras = (await Promise.all(backgroundJobs)).flat();
+        if (seq !== streetSuggestSeq || controller.signal.aborted) return;
+        if (extras.length) {
+          results.push(...extras);
+          mvsRenderMergedAddressResults(results, searchingHouse, typedStreet, typedHouse, seq);
+        }
+      }
+    } catch (err) {
+      if (err?.name !== 'AbortError' && seq === streetSuggestSeq) {
+        console.warn('MVS address suggestions failed:', err);
+        if (!streetSuggest.childElementCount) closeStreetSuggest();
+      }
+    }
+  }, 180);
+});
+addrInput.addEventListener('blur', () => setTimeout(closeStreetSuggest, 220));
+addrInput.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeStreetSuggest();
+});
 
 addrWrap.appendChild(addrInput);
 addrWrap.appendChild(btnMic);
@@ -10972,7 +11336,7 @@ document.getElementById('btnBootLog')?.addEventListener('click', async () => {
       swInfo += '\n   кэши: ' + ((await caches.keys()).join(', ') || 'нет');
     }
   } catch (e) { swInfo = 'ошибка: ' + (e && e.message); }
-  { const dg = window.__addrDiag; lines.push('', 'Подсказки адреса: ' + (dg ? ((dg.street ? 'улицы' : 'дома') + ' · «' + dg.q + '» · ' + dg.src + ' · найдено ' + dg.n + (dg.err ? ' · ошибка: ' + dg.err : '') + (dg.drop ? ' · показано ' + dg.shown + ' (отсеяно: город ' + dg.drop.city + ', улица ' + dg.drop.street + ', номер ' + dg.drop.num + ')' : '')) : 'пока не запускались')); }
+  { const dd = window.__ddDiag; lines.push('', 'DaData: ' + (ddKey() ? 'ключ задан' : 'ключ не задан') + (dd ? ' · последний ответ ' + dd.status + ' (' + new Date(dd.t).toLocaleTimeString('ru-RU') + ')' : '')); }
   lines.push('', 'Воркер сейчас: ' + swInfo + (window.__swTakeover ? '\n   (воркер сборщика заменён на свой)' : ''));
   lines.push('', '— Что отдавал воркер —');
   if (!swl.length) lines.push('пока пусто');
@@ -15300,224 +15664,145 @@ window.addEventListener('focus', runAllTimeChecksNow);
 
 
 /* ═══════════════════════════════════════════════
-   Подсказки адреса: улица → номер дома (корпус, буква) — по городу из «Моего города»
-   Источник — Photon (поиск по мере набора по данным OpenStreetMap)
+   DaData: подсказки улиц и домов (с корпусами и буквами) по городу из «Моего города»
+   Ключ вводится в приложении и хранится только в этом телефоне (в код не зашит).
    ═══════════════════════════════════════════════ */
-(function addrSuggestModule() {
-  const box = document.createElement('div');
-  box.id = 'addrSuggest';
-  document.body.appendChild(box);
-
-  let activeEl = null, timer = null, ctrl = null, seq = 0, suppress = false, cityCoord = null, cityCoordFor = '';
-  const cache = new Map();
-
-  const LAT2CYR = { a: 'а', c: 'с', e: 'е', o: 'о', p: 'р', x: 'х', k: 'к', m: 'м', t: 'т', b: 'в', h: 'н' };
-  const norm = v => String(v || '').toLowerCase().replace(/ё/g, 'е').replace(/[acepoxkmtbh]/g, ch => LAT2CYR[ch]).replace(/[.,]/g, ' ').replace(/\s+/g, ' ').trim();
-  // убираем «улица / ул. / проспект …», чтобы сравнивать только название
-  const coreName = v => norm(v).replace(/\b(улица|ул|проспект|пр-т|пр|переулок|пер|проезд|бульвар|б-р|шоссе|набережная|наб|площадь|пл|аллея|тупик|микрорайон|мкр)\b/g, '').replace(/\s+/g, ' ').trim();
-  const esc = v => String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-
-  function hide() { box.style.display = 'none'; box.innerHTML = ''; }
-  function place(el) {
-    const r = el.getBoundingClientRect();
-    const vv = window.visualViewport;
-    const vh = vv ? vv.height : window.innerHeight;
-    box.style.left = Math.max(8, r.left) + 'px';
-    box.style.width = Math.min(window.innerWidth - 16, Math.max(260, r.width)) + 'px';
-    const below = vh - r.bottom;
-    if (below >= 170 || below >= r.top) { box.style.top = (r.bottom + 4) + 'px'; box.style.bottom = 'auto'; box.style.maxHeight = Math.max(120, Math.min(280, below - 12)) + 'px'; }
-    else { box.style.top = 'auto'; box.style.bottom = (window.innerHeight - r.top + 4) + 'px'; box.style.maxHeight = Math.max(120, Math.min(280, r.top - 12)) + 'px'; }
+var DD_URL = 'https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/address';
+function ddKey() { try { return (localStorage.getItem('dadata_key') || '').trim(); } catch (e) { return ''; } }
+async function ddRequest(body, signal, keyOverride) {
+  const key = (keyOverride || ddKey());
+  if (!key) return null;
+  const ctrl = new AbortController();
+  const fromParent = () => ctrl.abort();
+  if (signal) { if (signal.aborted) ctrl.abort(); else signal.addEventListener('abort', fromParent, { once: true }); }
+  const to = setTimeout(() => ctrl.abort(), 4500);
+  try {
+    const r = await fetch(DD_URL, {
+      method: 'POST', signal: ctrl.signal,
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': 'Token ' + key },
+      body: JSON.stringify(body)
+    });
+    window.__ddDiag = { t: Date.now(), status: r.status };
+    if (!r.ok) return { error: r.status };
+    const d = await r.json();
+    return { rows: Array.isArray(d.suggestions) ? d.suggestions : [] };
+  } finally { clearTimeout(to); if (signal) signal.removeEventListener('abort', fromParent); }
+}
+// Город → фильтр DaData. Для Красногорска коды известны (со страницы города), для остальных городов ищем один раз и запоминаем
+async function ddCityLocation(signal) {
+  const city = (getMyCity() || 'Красногорск').trim();
+  if (/красногорск/i.test(city)) return { city_fias_id: '63fcf18a-365e-451f-baee-8d09ac50b773' };
+  try {
+    const c = JSON.parse(localStorage.getItem('dadata_city') || 'null');
+    if (c && c.city === city && (c.fias || c.kladr)) return c.fias ? { city_fias_id: c.fias } : { kladr_id: c.kladr };
+  } catch (e) {}
+  const res = await ddRequest({ query: city, count: 1, from_bound: { value: 'city' }, to_bound: { value: 'city' } }, signal);
+  const d = res && res.rows && res.rows[0] && res.rows[0].data;
+  if (!d) return null;
+  const loc = { city, fias: d.city_fias_id || d.fias_id || '', kladr: d.kladr_id || '' };
+  if (!loc.fias && !loc.kladr) return null;
+  try { localStorage.setItem('dadata_city', JSON.stringify(loc)); } catch (e) {}
+  return loc.fias ? { city_fias_id: loc.fias } : { kladr_id: loc.kladr };
+}
+var DD_POSTFIX_TYPES = /^(проезд|переулок|шоссе|тракт|дорога|аллея|тупик|проулок|просека|въезд|спуск)$/i;
+function ddStreetLabel(d) {
+  const name = String(d.street || '').trim();
+  if (!name) return '';
+  const type = String(d.street_type_full || '').trim();
+  if (!type) return name;
+  return DD_POSTFIX_TYPES.test(type) ? (name + ' ' + type) : (type + ' ' + name);
+}
+function ddHouseStr(d) {
+  let h = String(d.house || '').trim();
+  if (!h) return '';
+  const bt = String(d.block_type_full || d.block_type || '').toLowerCase(), b = String(d.block || '').trim();
+  if (b) {
+    if (/корпус|^к$/.test(bt)) h += 'к' + b;
+    else if (/строение|^стр$|^с$/.test(bt)) h += 'с' + b;
+    else if (/литера|^лит/.test(bt)) h += 'лит' + b;
+    else h += ' ' + (d.block_type || '') + ' ' + b;
   }
-  function inCity(p, cityN) {
-    if (!cityN) return true;
-    const fields = [p.city, p.town, p.village, p.locality, p.district, p.county, p.state_district].filter(Boolean);
-    if (!fields.length) return true;                       // нет данных о городе — не считаем чужим
-    return fields.some(v => norm(v).includes(cityN));
-  }
-  // название улицы: каждое набранное слово — начало какого-то слова в названии из карты
-  function streetMatch(typedCore, featName) {
-    const tt = typedCore.split(' ').filter(Boolean), nt = coreName(featName).split(' ').filter(Boolean);
-    return !tt.length || tt.every(t => nt.some(n => n.startsWith(t) || t.startsWith(n)));
-  }
-  async function getCityCoord(city) {
-    if (!city) return null;
-    if (cityCoordFor === city && cityCoord) return cityCoord;
-    try { const c = await geocodeAddress(city, true); if (c) { cityCoord = c; cityCoordFor = city; return c; } } catch (e) {}
+  const ht = String(d.house_type_full || '').toLowerCase();
+  if (ht && ht !== 'дом') h = ht + ' ' + h;      // «участок 5», «владение 3»
+  return h.trim();
+}
+// возвращает [{label, area}] или null, если DaData недоступен (нет ключа, ошибка, лимит) — тогда работает запасной поиск
+async function mvsDadataSuggest(typedStreet, typedHouse, signal) {
+  if (!ddKey()) return null;
+  let loc = null;
+  try { loc = await ddCityLocation(signal); } catch (e) { if (signal && signal.aborted) throw e; }
+  const house = !!typedHouse;
+  const body = house
+    ? { query: typedStreet + ' ' + typedHouse, count: 20, from_bound: { value: 'house' }, to_bound: { value: 'house' } }
+    : { query: typedStreet, count: 8, from_bound: { value: 'street' }, to_bound: { value: 'street' } };
+  if (loc) body.locations = [loc];
+  const res = await ddRequest(body, signal);
+  if (!res) return null;
+  if (res.error) {
+    if (!window.__ddWarned && (res.error === 401 || res.error === 403 || res.error === 402 || res.error === 429)) {
+      window.__ddWarned = true;
+      iosBanner({ title: res.error === 429 || res.error === 402 ? 'DaData: лимит исчерпан' : 'DaData: ключ не принят', sub: 'Работает запасной поиск адресов', icon: '!', kind: 'warn', duration: 5000 });
+    }
     return null;
   }
-  async function photonFetch(q, street, signal) {
-    const p = new URLSearchParams({ q, limit: street ? '15' : '20' });
-    const c = await getCityCoord(getMyCity());
-    if (c) { p.set('lat', c[0]); p.set('lon', c[1]); p.set('zoom', '12'); p.set('location_bias_scale', '0.4'); }
-    if (street) p.append('osm_tag', 'highway');
-    const r = await fetch('https://photon.komoot.io/api/?' + p.toString(), { signal });
-    if (!r.ok) throw new Error('Photon HTTP ' + r.status);
-    const d = await r.json();
-    return (d && d.features) ? d.features.map(f => f.properties || {}) : [];
-  }
-  // запасной источник: Nominatim (тот же, что у карты) — ищет по целым словам
-  async function nominatimFetch(q, signal) {
-    const p = new URLSearchParams({ format: 'jsonv2', addressdetails: '1', limit: '15', 'accept-language': 'ru', q });
-    const r = await fetch('https://nominatim.openstreetmap.org/search?' + p.toString(), { signal });
-    if (!r.ok) throw new Error('Nominatim HTTP ' + r.status);
-    const arr = await r.json();
-    return (arr || []).map(x => {
-      const a = x.address || {};
-      return { name: a.road || '', street: a.road || '', housenumber: a.house_number || '', city: a.city || a.town || a.village || a.municipality || '',
-               district: a.suburb || a.city_district || '', county: a.county || '', postcode: a.postcode || '', osm_key: x.category };
-    });
-  }
-  async function getFeats(q, street) {
-    const key = (street ? 'S|' : 'H|') + q;
-    if (cache.has(key)) return cache.get(key);
-    if (ctrl) ctrl.abort();
-    ctrl = new AbortController();
-    const to = setTimeout(() => ctrl.abort(), 8000);
-    let feats = [], src = 'photon', err = '';
-    try {
-      try { feats = await photonFetch(q, street, ctrl.signal); }
-      catch (e) { if (e && e.name === 'AbortError' && ctrl.signal.aborted && seqAborted) throw e; err = String((e && e.message) || e).slice(0, 40); feats = []; }
-      if (!feats.length) {                                   // Photon не ответил или пусто — пробуем Nominatim
-        try { feats = await nominatimFetch(q, ctrl.signal); src = 'nominatim'; if (feats.length) err = ''; }
-        catch (e2) { if (e2 && e2.name === 'AbortError' && seqAborted) throw e2; err = (err ? err + '; ' : '') + String((e2 && e2.message) || e2).slice(0, 40); }
-      }
-      window.__addrDiag = { t: Date.now(), q, street, src, n: feats.length, err };
-      if (feats.length) cache.set(key, feats);
-      return feats;
-    } finally { clearTimeout(to); }
-  }
-  let seqAborted = false;
-  // «улица Ленина, 13к1» → { street: 'улица Ленина', num: '13к1' }
-  function parseTyped(text) {
-    let t = String(text || '');
-    const city = getMyCity();
-    if (city) t = t.replace(new RegExp('^\\s*(?:г\\.?\\s*)?' + city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*,?\\s*', 'i'), '');
-    t = t.replace(/^\s*(?:г\.?|город)\s+[^,]+,\s*/i, '');
-    const m = t.match(/^(.*?)[\s,]+(\d+[0-9a-zа-яё\/\-\.]*)\s*$/i);
-    if (m && m[1].trim().length >= 2) return { street: m[1].trim().replace(/[,\s]+$/, ''), num: m[2] };
-    return { street: t.trim().replace(/[,\s]+$/, ''), num: '' };
-  }
-  function note(el, text) {
-    box.innerHTML = `<div class="as-note">${esc(text)}</div>`;
-    box._items = []; box._el = el;
-    place(el);
-    box.style.display = 'block';
-  }
-  function render(items, el) {
-    if (!items.length) { hide(); return; }
-    box.innerHTML = items.map((it, i) => `<div class="as-item" data-i="${i}"><div class="as-main">${esc(it.main)}</div>${it.sub ? `<div class="as-sub">${esc(it.sub)}</div>` : ''}</div>`).join('');
-    box._items = items; box._el = el;
-    place(el);
-    box.style.display = 'block';
-  }
-  async function update(el) {
-    const my = ++seq;
-    const text = el.value;
-    const city = getMyCity(), cityN = norm(city);
-    const { street, num } = parseTyped(text);
-    if (street.length < 2) { hide(); return; }
-    // «Ищу…» показываем только если ответ задерживается (иначе мигает на каждой букве)
-    clearTimeout(box._noteTimer);
-    if (box.style.display !== 'block') box._noteTimer = setTimeout(() => { if (my === seq) note(el, 'Ищу' + (city ? ' в «' + city + '»' : '') + '…'); }, 600);
-    try {
-      let items = [];
-      let feats;
-      const drop = { city: 0, num: 0, street: 0 };
-      if (!num) {
-        // 1-й шаг: улицы. Город — в начало запроса: недописанным считается последнее слово
-        feats = await getFeats((city ? city + ' ' : '') + street, true);
-        if (my !== seq) return;
-        const seen = new Set();
-        const typedCore = coreName(street);
-        feats.filter(p => p.name).forEach(p => {
-          if (!inCity(p, cityN)) { drop.city++; return; }
-          if (!streetMatch(typedCore, p.name)) { drop.street++; return; }
-          const k = norm(p.name);
-          if (seen.has(k)) return;
-          seen.add(k);
-          items.push({ main: p.name, sub: [p.district || p.city || '', p.postcode || ''].filter(Boolean).join(' · '), value: p.name + ', ', kind: 'street' });
-        });
-        items = items.slice(0, 6);
-      } else {
-        // 2-й шаг: номера домов с корпусами и буквами
-        feats = await getFeats((city ? city + ' ' : '') + street + ' ' + num, false);
-        if (my !== seq) return;
-        const typedCore = coreName(street), nl = norm(num);
-        const seen = new Set();
-        let canon = '';                                       // как улица называется в карте
-        feats.forEach(p => {
-          const stName = p.street || p.name || '';
-          if (!inCity(p, cityN)) { drop.city++; return; }
-          if (!streetMatch(typedCore, stName)) { drop.street++; return; }
-          if (!canon && stName) canon = stName;
-          if (!p.housenumber) return;
-          const hn = String(p.housenumber);
-          if (!norm(hn).startsWith(nl)) { drop.num++; return; }
-          const k = norm(hn);
-          if (seen.has(k)) return;
-          seen.add(k);
-          items.push({ main: stName + ', ' + hn, sub: [p.district || p.city || '', p.postcode || ''].filter(Boolean).join(' · '), value: stName + ', ' + hn, kind: 'house', hn });
-        });
-        const natural = h => { const m = h.match(/^(\d+)(.*)$/); return [m ? parseInt(m[1], 10) : 0, m ? m[2] : h]; };
-        items.sort((a, b) => { const x = natural(a.hn), y = natural(b.hn); return x[0] - y[0] || x[1].localeCompare(y[1], 'ru'); });
-        items = items.slice(0, 8);
-        // улица в карте есть, а такого дома нет — предлагаем вставить как введено, но с правильным названием улицы
-        if (!items.length && canon) items.push({ main: canon + ', ' + num, sub: 'дома нет в данных карты — вставить как есть', value: canon + ', ' + num, kind: 'house', hn: num });
-      }
-      clearTimeout(box._noteTimer);
-      if (window.__addrDiag) { window.__addrDiag.shown = items.length; window.__addrDiag.drop = drop; }
-      if (my !== seq || document.activeElement !== el) return;
-      if (items.length) { render(items, el); return; }
-      const dg = window.__addrDiag || {};
-      if (dg.err && !feats.length) { note(el, 'Нет связи с сервисом подсказок — введи адрес вручную'); return; }
-      // пока слово короткое — человек ещё печатает: молча прячем, без «не найдено»
-      if (!num && street.length < 5) { hide(); return; }
-      note(el, num ? 'Дом «' + num + '» не найден в данных карты — введи вручную' : 'Улица не найдена' + (city ? ' в «' + city + '»' : '') + ' — введи вручную');
-    } catch (e) {
-      clearTimeout(box._noteTimer);
-      if (e && e.name === 'AbortError') return;
-      if (my === seq) note(el, 'Нет связи с сервисом подсказок — введи адрес вручную');
+  const norm = v => String(v || '').toLowerCase().replace(/ё/g, 'е').replace(/[acepoxkmtbh]/g, ch => ({ a: 'а', c: 'с', e: 'е', o: 'о', p: 'р', x: 'х', k: 'к', m: 'м', t: 'т', b: 'в', h: 'н' }[ch]));
+  const out = [], seen = new Set();
+  const hn = norm(typedHouse);
+  res.rows.forEach(row => {
+    const d = row.data || {};
+    const st = ddStreetLabel(d);
+    if (!st) return;
+    let label = st;
+    if (house) {
+      const hs = ddHouseStr(d);
+      if (!hs || !norm(hs).replace(/^[^\d]*/, '').startsWith(hn)) return;
+      label = st + ', ' + hs;
     }
-  }
-  function choose(i) {
-    const it = box._items && box._items[i], el = box._el;
-    if (!it || !el) return;
-    suppress = true;
-    el.value = it.value;
-    el.dispatchEvent(new Event('input', { bubbles: true }));       // сохранит адрес и подгонит высоту поля
-    suppress = false;
-    try { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } catch (e) {}
-    vibro(8);
-    hide();
-    if (it.kind === 'street') {
-      // улица выбрана — сразу показываем клавиатуру для номера дома
-      try { el.focus(); } catch (e) {}
-    }
-  }
-
-  document.addEventListener('input', (e) => {
-    const el = e.target;
-    if (!el || !el.classList || !el.classList.contains('route-addr-input')) return;
-    if (suppress) return;
-    activeEl = el;
-    clearTimeout(timer);
-    seqAborted = true;
-    timer = setTimeout(() => { seqAborted = false; update(el); }, 300);
-  }, true);
-  // выбор подсказки: pointerdown, чтобы поле не потеряло фокус и клавиатура не закрылась
-  box.addEventListener('pointerdown', (e) => {
-    const it = e.target.closest('.as-item');
-    if (!it) return;
-    e.preventDefault();
-    choose(parseInt(it.dataset.i, 10));
+    const k = norm(label);
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push({ label, area: [d.city || d.settlement || '', d.postal_code || ''].filter(Boolean).join(' · ') });
   });
-  document.addEventListener('focusout', (e) => {
-    if (e.target === activeEl) setTimeout(() => { if (document.activeElement !== activeEl) hide(); }, 150);
+  return out;
+}
+// окно «Ключ DaData»
+(function () {
+  const $ = id => document.getElementById(id);
+  const ov = $('dadataModal');
+  if (!ov) return;
+  const status = (t, color) => { const e = $('ddKeyStatus'); e.textContent = t; e.style.color = color || '#666'; };
+  document.getElementById('btnDadataKey')?.addEventListener('click', () => {
+    document.getElementById('menu3')?.classList.remove('show');
+    vibro(10);
+    $('ddKeyInput').value = ddKey();
+    status(ddKey() ? 'Ключ задан' : 'Ключ не задан — работает запасной поиск', '#666');
+    ov.classList.add('show');
   });
-  window.addEventListener('scroll', () => { if (box.style.display === 'block' && activeEl) place(activeEl); }, true);
-  window.addEventListener('resize', () => { if (box.style.display === 'block' && activeEl) place(activeEl); });
-  if (window.visualViewport) window.visualViewport.addEventListener('resize', () => { if (box.style.display === 'block' && activeEl) place(activeEl); });
-  window.__addrSuggestUpdate = update;   // для проверки
+  const close = () => ov.classList.remove('show');
+  $('ddKeyClose')?.addEventListener('click', close);
+  ov.addEventListener('click', e => { if (e.target === ov) close(); });
+  $('ddKeyDel')?.addEventListener('click', () => {
+    try { localStorage.removeItem('dadata_key'); localStorage.removeItem('dadata_city'); } catch (e) {}
+    $('ddKeyInput').value = '';
+    status('Ключ удалён', '#c0392b');
+    vibro(15);
+  });
+  $('ddKeySave')?.addEventListener('click', async () => {
+    const key = $('ddKeyInput').value.trim();
+    if (!key) { status('Вставь ключ', '#c0392b'); return; }
+    if (key.length < 20) { status('Слишком короткий ключ — проверь, что скопирован API-ключ целиком', '#c0392b'); return; }
+    status('Проверяю…', '#666');
+    try {
+      const res = await ddRequest({ query: 'красногорск', count: 1 }, null, key);
+      if (res && res.rows) {
+        try { localStorage.setItem('dadata_key', key); } catch (e) {}
+        status('✓ Ключ работает, подсказки включены', '#27ae60');
+        vibro(15);
+      } else if (res && res.error) {
+        status(res.error === 401 || res.error === 403 ? 'Ключ не принят (код ' + res.error + ') — проверь, что это API-ключ, а не секретный' : (res.error === 429 || res.error === 402 ? 'Лимит или оплата (код ' + res.error + ')' : 'Ошибка DaData, код ' + res.error), '#c0392b');
+      } else status('Нет ответа от DaData — проверь интернет (и VPN)', '#c0392b');
+    } catch (e) { status('Нет связи с DaData — проверь интернет (и VPN)', '#c0392b'); }
+  });
 })();
 
 // Запуск дошёл до конца — страховка от белого экрана больше не нужна
